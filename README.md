@@ -32,13 +32,8 @@ HiTrace is the lightweight implementation based on the distributed call chain of
 ```
 /base/hiviewdfx/hitrace
 ├── frameworks           # Framework code
-│   ├── java            # HiTrace Java implementation code
-│   ├── jni             # HiTrace JNI implementation code
 │   └── native          # HiTrace Native implementation code
 └── interfaces           # APIs
-   ├── java              # Java APIs
-   │   ├── innerkits    # JAR packages opened to internal subsystems
-   │   └── kits         # JAR packages opened to applications
    └── native            # C/C++ APIs
        └── innerkits     # Header files opened to internal subsystems
 ```
@@ -54,6 +49,7 @@ HiTrace is already supported by the IPC and EventHandler communication mechanism
 Major APIs of HiTrace
 
 <a name="table1764215412123"></a>
+
 <table><tbody><tr id="row1370464111219"><td class="cellrowborder" valign="top" width="8.98%"><p id="p1670474115124"><a name="p1670474115124"></a><a name="p1670474115124"></a><strong id="b13126192811515"><a name="b13126192811515"></a><a name="b13126192811515"></a>Class</strong></p>
 </td>
 <td class="cellrowborder" valign="top" width="27.47%"><p id="p167041041191214"><a name="p167041041191214"></a><a name="p167041041191214"></a><strong id="b93135237153"><a name="b93135237153"></a><a name="b93135237153"></a>API</strong></p>
@@ -93,42 +89,6 @@ Major APIs of HiTrace
 </tr>
 </tbody>
 </table>
-
-### Usage Guidelines<a name="section129654513264"></a>
-
-\(1\) Enable call chain tracing for the service process.
-
-Import the  **HiTrace**  and  **HiTraceId**  classes.
-
-```
-import ohos.hiviewdfx.HiTrace;
-import ohos.hiviewdfx.HiTraceId;
-```
-
-Add the code to start or stop call chain tracing.
-
-```
-HiTraceId traceId = HiTrace.begin("MyServiceFlow", HiTrace.HITRACE_FLAG_DEFAULT);
-... (service process for call chain tracing)
-HiTrace.end(traceId);
-```
-
-\(2\) Run the application.
-
-\(3\) Use the hilog tool in the shell to filter logs of the service invoking process.
-
-Filter logs based on the  **name**  parameter in the tracing task and find  **ChainId**.
-
-hilog | grep "MyServiceFlow"
-
-**Note**: The log format for traceid is as follows:
-
-Time PID TID Level Domain/Tag: \[**ChainId**, SpanId, ParentSpanId\] Content
-
-Filter the logs of the service invoking process based on  **ChainId**.
-
-hilog | grep "ChainId"
-
 ## Repositories Involved<a name="section1371113476307"></a>
 
 [Hivew](https://gitee.com/openharmony)

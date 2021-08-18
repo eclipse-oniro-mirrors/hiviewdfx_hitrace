@@ -33,13 +33,8 @@ HiTrace实现机制：
 ```
 /base/hiviewdfx/hitrace
 ├── frameworks           # 框架代码
-│   ├── java            # HiTrace java实现代码
-│   ├── jni             # HiTrace jni代码
 │   └── native          # HiTrace native实现代码
 └── interfaces           # 接口
-   ├── java              # java接口
-   │   ├── innerkits    # 对内部子系统暴露的jar包定义
-   │   └── kits         # 对应用暴露的jar包定义
    └── native            # C/C++接口
        └── innerkits     # 对内部子系统暴露的头文件
 ```
@@ -95,40 +90,6 @@ HiTrace实现机制：
 </tbody>
 </table>
 
-### 使用说明<a name="section129654513264"></a>
-
-（1）在待跟踪的业务调用流程中插入跟踪控制代码。
-
-引入类名。
-
-```
-import ohos.hiviewdfx.HiTrace;
-import ohos.hiviewdfx.HiTraceId;
-```
-
-在业务代码中使用（启动/结束跟踪）：
-
-```
-HiTraceId traceId = HiTrace.begin("MyServiceFlow", HiTrace.HITRACE_FLAG_DEFAULT);
-...... （待跟踪的业务调用流程）
-HiTrace.end(traceId);
-```
-
-（2）运行应用程序
-
-（3）shell下使用hilog工具，过滤业务调用流程的日志。
-
-按启动跟踪里的name参数过滤日志，找出ChainId：
-
-hilog | grep “MyServiceFlow”
-
-注意：traceid的日志格式如下
-
-Time PID TID Level Domain/Tag: \[**ChainId**, SpanId, ParentSpanId\] Content
-
-按ChainId过滤出业务调用流程的日志：
-
-hilog | grep “ChainId”
 
 ## 相关仓<a name="section1371113476307"></a>
 
