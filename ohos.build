@@ -18,6 +18,9 @@
             ]
           }
         }
+      ],
+      "test_list": [
+        "//base/hiviewdfx/hitrace/frameworks/native/test:unittest"
       ]
     }
   }
