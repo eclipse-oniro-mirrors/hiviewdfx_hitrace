@@ -1,6 +1,6 @@
 {
     "name": "@ohos/hitrace",
-    "description": "hiviewdfx_hitrace",
+    "description": "cross-thread, cross-process, and cross-device service call chain",
     "version": "3.1",
     "license": "Apache License 2.0",
     "publishAs": "code-segment",
