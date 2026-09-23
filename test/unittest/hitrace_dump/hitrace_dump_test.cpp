@@ -1655,8 +1655,11 @@ static TraceArgs BuildTraceArgs(uint32_t bufferSize)
 
 static bool VerifyClampedBufferSizeApplied()
 {
-    constexpr int maxRetryTimes = 3; // 3 : max retry times
-    for (int retry = 0; retry < maxRetryTimes; retry++) {
+    constexpr int MAX_RETRY_TIMES = 3; // 3 : max retry times
+    constexpr int CLAMPED_BUFFER_SIZE_KB = 256; // 256 KB, minimum buffer size after clamping
+    constexpr int HM_ALIGNED_BUFFER_SIZE_KB = 512; // 512 KB, hm kernel aligns buffer size up to this
+    constexpr int BUFFER_SIZE_TOLERANCE_KB = 4; // 4 KB, tolerance for page header rounding
+    for (int retry = 0; retry < MAX_RETRY_TIMES; retry++) {
         std::string args = "tags:app clockType:boot bufferSize:100 overwrite:1";
         TraceErrorCode openRet = OpenTrace(args);
         if (openRet != TraceErrorCode::SUCCESS) {
@@ -1670,8 +1673,8 @@ static bool VerifyClampedBufferSizeApplied()
         if (StringToInt(curBufferSizeStr, curBufferSize)) {
             GTEST_LOG_(INFO) << "curBufferSize: " << curBufferSize;
             // hm kernel aligns buffer size up to 512 KB; linux kernel reads ~258 due to page header
-            sizeVerified = IsHmKernel() ? (curBufferSize == 512)
-                : (std::abs(curBufferSize - 256) < 4); // 256 KB
+            sizeVerified = IsHmKernel() ? (curBufferSize == HM_ALIGNED_BUFFER_SIZE_KB)
+                : (std::abs(curBufferSize - CLAMPED_BUFFER_SIZE_KB) < BUFFER_SIZE_TOLERANCE_KB);
         } else {
             GTEST_LOG_(WARNING) << "buffer_size_kb unreadable, retry: " << retry;
         }
