@@ -1640,6 +1640,53 @@ HWTEST_F(HitraceDumpTest, OpenTraceTest004, TestSize.Level1)
     GTEST_LOG_(INFO) << "OpenTraceTest004: end.";
 }
 
+static TraceArgs BuildTraceArgs(uint32_t bufferSize)
+{
+    return TraceArgs {
+        .tags = { "app" },
+        .clockType = "boot",
+        .isOverWrite = true,
+        .bufferSize = bufferSize,
+        .fileSizeLimit = DEFAULT_FILE_SIZE_LIMIT,
+        .appPid = 0,
+        .filterPids = {}
+    };
+}
+
+static bool VerifyClampedBufferSizeApplied()
+{
+    constexpr int maxRetryTimes = 3; // 3 : max retry times
+    for (int retry = 0; retry < maxRetryTimes; retry++) {
+        std::string args = "tags:app clockType:boot bufferSize:100 overwrite:1";
+        TraceErrorCode openRet = OpenTrace(args);
+        if (openRet != TraceErrorCode::SUCCESS) {
+            GTEST_LOG_(ERROR) << "OpenTrace failed: " << static_cast<int>(openRet);
+            return false;
+        }
+        std::string curBufferSizeStr = ReadFile("buffer_size_kb", GetTraceRootPath());
+        curBufferSizeStr = curBufferSizeStr.substr(0, curBufferSizeStr.find("\n"));
+        int curBufferSize = 0;
+        bool sizeVerified = false;
+        if (StringToInt(curBufferSizeStr, curBufferSize)) {
+            GTEST_LOG_(INFO) << "curBufferSize: " << curBufferSize;
+            // hm kernel aligns buffer size up to 512 KB; linux kernel reads ~258 due to page header
+            sizeVerified = IsHmKernel() ? (curBufferSize == 512)
+                : (std::abs(curBufferSize - 256) < 4); // 256 KB
+        } else {
+            GTEST_LOG_(WARNING) << "buffer_size_kb unreadable, retry: " << retry;
+        }
+        TraceErrorCode closeRet = CloseTrace();
+        if (closeRet != TraceErrorCode::SUCCESS) {
+            GTEST_LOG_(ERROR) << "CloseTrace failed: " << static_cast<int>(closeRet);
+            return false;
+        }
+        if (sizeVerified) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * @tc.name: OpenTraceTest005
  * @tc.desc: Test OpenTrace with illegal or out of range bufferSize
@@ -1667,44 +1714,16 @@ HWTEST_F(HitraceDumpTest, OpenTraceTest005, TestSize.Level1)
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 
     // bufferSize less than min in TraceArgs, clamp to min
-    TraceArgs traceArgs = {
-        .tags = { "app" },
-        .clockType = "boot",
-        .isOverWrite = true,
-        .bufferSize = 128, // 128 KB
-        .fileSizeLimit = DEFAULT_FILE_SIZE_LIMIT,
-        .appPid = 0,
-        .filterPids = {}
-    };
+    TraceArgs traceArgs = BuildTraceArgs(128); // 128 KB
     ASSERT_EQ(static_cast<int>(OpenTrace(traceArgs)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
     // bufferSize larger than max in TraceArgs, clamp to max
-    traceArgs.bufferSize = 400 * 1024; // 400 MB
+    traceArgs = BuildTraceArgs(400 * 1024); // 400 MB
     ASSERT_EQ(static_cast<int>(OpenTrace(traceArgs)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 
     // verify clamped bufferSize is applied; retry to tolerate CpuBufferBalancer racing
-    bool sizeVerified = false;
-    for (int retry = 0; retry < 3 && !sizeVerified; retry++) { // 3 : max retry times
-        args = "tags:app clockType:boot bufferSize:100 overwrite:1";
-        ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
-        ASSERT_TRUE(!GetTraceRootPath().empty());
-        std::string curBufferSizeStr = ReadFile("buffer_size_kb", GetTraceRootPath());
-        curBufferSizeStr = curBufferSizeStr.substr(0, curBufferSizeStr.find("\n"));
-        int curBufferSize = 0;
-        if (!StringToInt(curBufferSizeStr, curBufferSize)) {
-            GTEST_LOG_(WARNING) << "buffer_size_kb unreadable, retry: " << retry;
-        } else {
-            GTEST_LOG_(INFO) << "curBufferSize: " << curBufferSize;
-            if (IsHmKernel()) {
-                sizeVerified = (curBufferSize == 512); // hm kernel aligns buffer size up to 512 KB
-            } else {
-                sizeVerified = std::abs(curBufferSize - 256) < 4; // 256 KB
-            }
-        }
-        ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
-    }
-    ASSERT_TRUE(sizeVerified) << "clamped buffer size not observed after retries";
+    ASSERT_TRUE(VerifyClampedBufferSizeApplied()) << "clamped buffer size not observed after retries";
 
     // boundary bufferSize is legal
     args = "tags:app clockType:boot bufferSize:256 overwrite:1";
