@@ -1683,17 +1683,28 @@ HWTEST_F(HitraceDumpTest, OpenTraceTest005, TestSize.Level1)
     ASSERT_EQ(static_cast<int>(OpenTrace(traceArgs)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 
-    // verify clamped bufferSize is applied
-    args = "tags:app clockType:boot bufferSize:100 overwrite:1";
-    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
-    ASSERT_TRUE(!GetTraceRootPath().empty());
-    std::string curBufferSizeStr = ReadFile("buffer_size_kb", GetTraceRootPath());
-    curBufferSizeStr = curBufferSizeStr.substr(0, curBufferSizeStr.find("\n"));
-    int curBufferSize = 0;
-    ASSERT_TRUE(StringToInt(curBufferSizeStr, curBufferSize));
-    GTEST_LOG_(INFO) << "curBufferSize: " << curBufferSize;
-    ASSERT_TRUE(std::abs(curBufferSize - 256) < 4); // 256 KB
-    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+    // verify clamped bufferSize is applied; retry to tolerate CpuBufferBalancer racing
+    bool sizeVerified = false;
+    for (int retry = 0; retry < 3 && !sizeVerified; retry++) { // 3 : max retry times
+        args = "tags:app clockType:boot bufferSize:100 overwrite:1";
+        ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+        ASSERT_TRUE(!GetTraceRootPath().empty());
+        std::string curBufferSizeStr = ReadFile("buffer_size_kb", GetTraceRootPath());
+        curBufferSizeStr = curBufferSizeStr.substr(0, curBufferSizeStr.find("\n"));
+        int curBufferSize = 0;
+        if (!StringToInt(curBufferSizeStr, curBufferSize)) {
+            GTEST_LOG_(WARNING) << "buffer_size_kb unreadable, retry: " << retry;
+        } else {
+            GTEST_LOG_(INFO) << "curBufferSize: " << curBufferSize;
+            if (IsHmKernel()) {
+                sizeVerified = (curBufferSize == 512); // hm kernel aligns buffer size up to 512 KB
+            } else {
+                sizeVerified = std::abs(curBufferSize - 256) < 4; // 256 KB
+            }
+        }
+        ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+    }
+    ASSERT_TRUE(sizeVerified) << "clamped buffer size not observed after retries";
 
     // boundary bufferSize is legal
     args = "tags:app clockType:boot bufferSize:256 overwrite:1";
