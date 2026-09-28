@@ -2040,7 +2040,8 @@ static bool HandleDumpSnapshot()
 {
     g_needSysEvent = false;
     bool isSuccess = true;
-    if (g_traceArgs.output.size() > 0 && !IsWritable(g_traceArgs.output)) {
+    if (!g_traceArgs.output.empty() && !IsDefaultTraceDirectory(g_traceArgs.output) &&
+        !IsWritable(g_traceArgs.output)) {
         ConsoleLog("error: illegal path");
         return false;
     }

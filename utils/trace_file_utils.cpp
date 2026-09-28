@@ -274,6 +274,11 @@ bool RemoveFile(const std::string& fileName)
     return result;
 }
 
+bool IsDefaultTraceDirectory(const std::string& path)
+{
+    return path == TRACE_FILE_DEFAULT_DIR || path + "/" == TRACE_FILE_DEFAULT_DIR;
+}
+
 bool IsWritable(const std::string& fileName)
 {
     constexpr auto length = sizeof(TRACE_WRITABLE_PATH) - 1u;
@@ -349,7 +354,7 @@ bool IsWritableDir(const std::string& fileName)
 
 std::string GenerateTraceFileName(TraceDumpType traceType, const std::string& outputPath)
 {
-    if (outputPath.empty()) {
+    if (outputPath.empty() || IsDefaultTraceDirectory(outputPath)) {
         return TRACE_FILE_DEFAULT_DIR + GenerateTraceFileNameInner(traceType);
     }
     if (IsWritable(outputPath)) {

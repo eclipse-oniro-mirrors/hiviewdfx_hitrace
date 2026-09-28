@@ -73,6 +73,9 @@ TraceErrorCode OpenTrace(const std::vector<std::string>& tagGroups);
  * ---- If maxDuration is less than 0, it is illegal input parameter.
  * utTraceEndTime: the retrospective starting time stamp of target trace.
  * ----If utTraceEndTime = 0, it is not set.
+ * outputPath: empty uses the default trace directory. Explicit /data/log/hitrace (with or without
+ * a trailing slash) generates a filename there; /data/local/tmp paths may specify a file or directory.
+ * A nonempty outputPath marks newly generated files as user traces.
  * return TraceErrorCode::SUCCESS if any trace is captured between the designated interval
  * return TraceErrorCode::OUT_OF_TIME otherwise.
 */

@@ -1674,6 +1674,45 @@ public:
 };
 
 /**
+ * @tc.name: DefaultDirectorySourceTag
+ * @tc.desc: Explicit default directories produce new files marked as user traces.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceSourceXattrTest, DefaultDirectorySourceTag, TestSize.Level2)
+{
+    for (const std::string path : {"/data/log/hitrace", "/data/log/hitrace/"}) {
+        std::set<std::string> before;
+        GetTraceFileNamesInDir(before, TraceDumpType::TRACE_SNAPSHOT);
+        ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), TraceErrorCode::SUCCESS);
+        sleep(2);
+        const auto ret = DumpTrace(0, 0, path);
+        EXPECT_EQ(CloseTrace(), TraceErrorCode::SUCCESS);
+        EXPECT_EQ(ret.errorCode, TraceErrorCode::SUCCESS) << path;
+
+        std::set<std::string> after;
+        GetTraceFileNamesInDir(after, TraceDumpType::TRACE_SNAPSHOT);
+        size_t newFiles = 0;
+        for (const auto& file : after) {
+            if (before.count(file) != 0) {
+                continue;
+            }
+            ++newFiles;
+            EXPECT_EQ(file.find("/data/log/hitrace/trace_"), 0u);
+            EXPECT_GT(GetFileSize(file), 0);
+            EXPECT_NE(std::find(ret.outputFiles.begin(), ret.outputFiles.end(), file), ret.outputFiles.end());
+            char source[16] = {};
+            const ssize_t len = TEMP_FAILURE_RETRY(getxattr(file.c_str(), "user.trace_source", source, sizeof(source)));
+            EXPECT_EQ(len, 4) << file;
+            if (len > 0) {
+                EXPECT_EQ(std::string(source, static_cast<size_t>(len)), "user") << file;
+            }
+            EXPECT_EQ(remove(file.c_str()), 0);
+        }
+        EXPECT_EQ(newFiles, 1u) << path;
+    }
+}
+
+/**
  * @tc.name: SourceTag001
  * @tc.desc: Verify source xattrs on newly generated system and user traces.
  * @tc.type: FUNC

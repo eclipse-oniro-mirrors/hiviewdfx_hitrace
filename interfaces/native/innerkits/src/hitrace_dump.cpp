@@ -1617,7 +1617,7 @@ TraceRetInfo DumpTrace(uint32_t maxDuration, uint64_t utTraceEndTime, const std:
         ret.mode = g_traceMode;
         return ret;
     }
-    if (isUserTrace && !IsWritable(outputPath)) {
+    if (isUserTrace && !IsDefaultTraceDirectory(outputPath) && !IsWritable(outputPath)) {
         ret.errorCode = FILE_ERROR;
         return ret;
     }

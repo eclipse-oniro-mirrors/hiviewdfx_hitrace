@@ -71,5 +71,34 @@ HWTEST_F(TraceFileUtilsTest, IsWritableDir01, TestSize.Level2)
     ASSERT_FALSE(Hitrace::IsWritableDir("/data/local/tmp/test.txt"));
     ASSERT_FALSE(Hitrace::IsWritableDir("/system/bin"));
 }
+
+/**
+ * @tc.name: GenerateSnapshotInDefaultDirectory
+ * @tc.desc: Generate a snapshot filename for either spelling of the default directory.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceFileUtilsTest, GenerateSnapshotInDefaultDirectory, TestSize.Level2)
+{
+    const std::string prefix = "/data/log/hitrace/trace_";
+    for (const std::string path : {"/data/log/hitrace", "/data/log/hitrace/"}) {
+        const auto file = Hitrace::GenerateTraceFileName(Hitrace::TRACE_SNAPSHOT, path);
+        EXPECT_EQ(file.compare(0, prefix.size(), prefix), 0) << path;
+        ASSERT_GT(file.size(), prefix.size()) << path;
+        EXPECT_EQ(file.substr(file.size() - 4), ".sys");
+    }
+}
+
+/**
+ * @tc.name: RejectSnapshotOutsideDefaultDirectory
+ * @tc.desc: The default directory exception does not allow arbitrary paths or traversal.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceFileUtilsTest, RejectSnapshotOutsideDefaultDirectory, TestSize.Level2)
+{
+    for (const std::string path : {"/data/log/hitrace-other", "/data/log/hitrace/../outside.sys",
+        "/data/log/hitrace/custom.sys", "/data/log", "/system/bin"}) {
+        EXPECT_TRUE(Hitrace::GenerateTraceFileName(Hitrace::TRACE_SNAPSHOT, path).empty()) << path;
+    }
+}
 } // namespace HiviewDFX
 } // namespace OHOS
