@@ -15,14 +15,24 @@
 
 #include "file_ageing_utils.h"
 
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <ctime>
+#include <dirent.h>
+#include <fcntl.h>
+#include <memory>
 #include <queue>
 #include <set>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <sys/xattr.h>
 #include <unistd.h>
 
 #include "hilog/log.h"
 
 #include "common_utils.h"
+#include "smart_fd.h"
 #include "trace_file_utils.h"
 #include "trace_json_parser.h"
 
@@ -39,6 +49,47 @@ namespace {
 constexpr int BYTE_PER_KB = 1024;
 constexpr size_t DEFAULT_LINK_NUM = 16;
 using namespace OHOS::HiviewDFX::Hitrace;
+
+bool IsTraceFileExpired(const timespec& modified, const timespec& now, uint32_t retentionSecond)
+{
+    const int64_t cutoff = static_cast<int64_t>(now.tv_sec) - static_cast<int64_t>(retentionSecond);
+    return static_cast<int64_t>(modified.tv_sec) < cutoff ||
+        (static_cast<int64_t>(modified.tv_sec) == cutoff && modified.tv_nsec < now.tv_nsec);
+}
+
+int AgeTraceFileAt(int directoryFd, const char* name, const timespec& now, uint32_t retentionSecond, bool& removed)
+{
+    OHOS::HiviewDFX::SmartFd fd(openat(directoryFd, name, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+    if (!fd) {
+        return (errno == ENOENT || errno == ELOOP) ? SUCCESS : FILE_ERROR;
+    }
+    struct stat fileStat {};
+    if (fstat(fd.GetFd(), &fileStat) != 0) {
+        return FILE_ERROR;
+    }
+    if (!S_ISREG(fileStat.st_mode) || !IsTraceFileExpired(fileStat.st_mtim, now, retentionSecond)) {
+        return SUCCESS;
+    }
+    constexpr char sourceTag[] = "system";
+    char source[sizeof(sourceTag) - 1] = {};
+    const ssize_t length = TEMP_FAILURE_RETRY(fgetxattr(fd.GetFd(), "user.trace_source", source, sizeof(source)));
+    if (length < 0) {
+        return (errno == ENODATA || errno == ERANGE) ? SUCCESS : FILE_ERROR;
+    }
+    if (length != static_cast<ssize_t>(sizeof(source)) || memcmp(source, sourceTag, sizeof(source)) != 0) {
+        return SUCCESS;
+    }
+    // RecoverTmpTrace holds this lock until its asynchronous zip task finishes.
+    if (flock(fd.GetFd(), LOCK_EX | LOCK_NB) != 0) {
+        return (errno == EWOULDBLOCK || errno == EAGAIN) ? SUCCESS : FILE_ERROR;
+    }
+    if (unlinkat(directoryFd, name, 0) != 0) {
+        return errno == ENOENT ? SUCCESS : FILE_ERROR;
+    }
+    removed = true;
+    HILOG_INFO(LOG_CORE, "AgeTraceFile: deleted %{public}s.", name);
+    return SUCCESS;
+}
 
 class FileAgeingChecker {
 public:
@@ -245,6 +296,49 @@ void HandleAgeingSnapShort(std::vector<TraceFileInfo>& fileList, const TraceDump
 namespace OHOS {
 namespace HiviewDFX {
 namespace Hitrace {
+
+int FileAgeingUtils::AgeTraceFiles(std::vector<TraceFileInfo>& fileList, uint32_t retentionSecond,
+    const std::string& directory)
+{
+    timespec now {};
+    if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
+        return FILE_ERROR;
+    }
+    std::unique_ptr<DIR, int (*)(DIR*)> dir(opendir(directory.c_str()), closedir);
+    if (!dir) {
+        return errno == ENOENT ? SUCCESS : FILE_ERROR;
+    }
+    const std::string prefix = directory + (directory.back() == '/' ? "" : "/");
+    std::set<std::string> removedFiles;
+    int result = SUCCESS;
+    dirent* entry = nullptr;
+    do {
+        errno = 0;
+        entry = readdir(dir.get());
+        if (entry == nullptr) {
+            if (errno != 0) {
+                result = FILE_ERROR;
+            }
+            break;
+        }
+        if (entry->d_type != DT_REG && entry->d_type != DT_UNKNOWN) {
+            continue;
+        }
+        bool removed = false;
+        if (AgeTraceFileAt(dirfd(dir.get()), entry->d_name, now, retentionSecond, removed) != SUCCESS) {
+            HILOG_ERROR(LOG_CORE, "AgeTraceFile: failed to age %{public}s, errno %{public}d.", entry->d_name, errno);
+            result = FILE_ERROR;
+        }
+        if (removed) {
+            removedFiles.insert(prefix + entry->d_name);
+        }
+    } while (entry != nullptr);
+    auto isRemoved = [&removedFiles](const TraceFileInfo& info) {
+        return removedFiles.count(info.filename) != 0;
+    };
+    fileList.erase(std::remove_if(fileList.begin(), fileList.end(), isRemoved), fileList.end());
+    return result;
+}
 
 void FileAgeingUtils::HandleAgeing(std::vector<TraceFileInfo>& fileList, const TraceDumpType traceType,
                                    int64_t setTotalSize)
