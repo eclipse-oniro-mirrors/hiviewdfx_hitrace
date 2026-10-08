@@ -1138,6 +1138,20 @@ void SetDestTraceTimeAndDuration(uint32_t maxDuration, const uint64_t& utTraceEn
         g_utDestTraceStartTime, g_utDestTraceEndTime);
 }
 
+std::vector<std::string> MergeArgsTokens(const std::vector<std::string>& argList)
+{
+    std::vector<std::string> mergedList;
+    for (const auto& item : argList) {
+        if (!mergedList.empty() && item.find(":") == std::string::npos && !mergedList.back().empty() &&
+            mergedList.back().back() == ':') {
+            mergedList.back() += item;
+        } else {
+            mergedList.push_back(item);
+        }
+    }
+    return mergedList;
+}
+
 /**
  * args: tags:tag1,tags2... tagGroups:group1,group2... clockType:boot bufferSize:1024 overwrite:1 output:filename
  * traceParams:  Save the above parameters
@@ -1145,9 +1159,8 @@ void SetDestTraceTimeAndDuration(uint32_t maxDuration, const uint64_t& utTraceEn
 bool ParseArgs(std::string args, TraceParams& traceParams, const std::map<std::string, TraceTag>& allTags,
                const std::map<std::string, std::vector<std::string>>& tagGroupTable)
 {
-    RemoveUnSpace(":", args);
     RemoveUnSpace(",", args);
-    std::vector<std::string> argList = Split(args, ' ');
+    std::vector<std::string> argList = MergeArgsTokens(Split(args, ' '));
     for (const auto& item : argList) {
         size_t pos = item.find(":");
         if (pos == std::string::npos) {
