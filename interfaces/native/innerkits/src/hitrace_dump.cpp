@@ -1142,8 +1142,15 @@ std::vector<std::string> MergeArgsTokens(const std::vector<std::string>& argList
 {
     std::vector<std::string> mergedList;
     for (const auto& item : argList) {
-        if (!mergedList.empty() && item.find(":") == std::string::npos && !mergedList.back().empty() &&
-            mergedList.back().back() == ':') {
+        if (mergedList.empty()) {
+            mergedList.push_back(item);
+        } else if (!item.empty() && item.front() == ':') {
+            // A token starting with ':' has an empty key and cannot start a
+            // parameter, so it continues the previous one: "key :value".
+            mergedList.back() += item;
+        } else if (item.find(":") == std::string::npos && !mergedList.back().empty() &&
+                   mergedList.back().back() == ':') {
+            // A token without ':' continues a token ending with ':': "key: value".
             mergedList.back() += item;
         } else {
             mergedList.push_back(item);

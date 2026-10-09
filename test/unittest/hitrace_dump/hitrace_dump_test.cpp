@@ -985,6 +985,10 @@ HWTEST_F(HitraceDumpTest, DumpForCmdMode_004, TestSize.Level0)
     ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 
+    args = "tags:memory clockType : bufferSize:1024 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
     args = "tags:memory clockType:perf bufferSize:1024 overwrite:1";
     ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
@@ -1024,6 +1028,10 @@ HWTEST_F(HitraceDumpTest, DumpForCmdMode_006, TestSize.Level0)
     ASSERT_EQ(static_cast<int>(ret.errorCode), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_TRUE(ret.outputFiles.size() > 0);
 
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
+    args = "tags : sched clockType : boot bufferSize: 1024 overwrite :1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 }
 
