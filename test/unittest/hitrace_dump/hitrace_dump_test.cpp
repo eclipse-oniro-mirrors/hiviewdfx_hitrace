@@ -1659,4 +1659,108 @@ HWTEST_F(HitraceDumpTest, DynamicBufferTest001, TestSize.Level2)
         ASSERT_EQ(dynamicBuffer.CalculateBufferSize().size(), 0lu);
     }
 }
+
+class TraceSourceXattrTest : public testing::Test {
+public:
+    static void SetUpTestCase()
+    {
+        system("service_control stop hiview");
+    }
+
+    static void TearDownTestCase()
+    {
+        system("service_control start hiview");
+    }
+};
+
+/**
+ * @tc.name: DefaultDirectorySourceTag
+ * @tc.desc: Explicit default directories produce new files marked as user traces.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceSourceXattrTest, DefaultDirectorySourceTag, TestSize.Level2)
+{
+    for (const std::string path : {"/data/log/hitrace", "/data/log/hitrace/"}) {
+        std::set<std::string> before;
+        GetTraceFileNamesInDir(before, TraceDumpType::TRACE_SNAPSHOT);
+        ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), TraceErrorCode::SUCCESS);
+        sleep(2);
+        const auto ret = DumpTrace(0, 0, path);
+        EXPECT_EQ(CloseTrace(), TraceErrorCode::SUCCESS);
+        EXPECT_EQ(ret.errorCode, TraceErrorCode::SUCCESS) << path;
+
+        std::set<std::string> after;
+        GetTraceFileNamesInDir(after, TraceDumpType::TRACE_SNAPSHOT);
+        size_t newFiles = 0;
+        for (const auto& file : after) {
+            if (before.count(file) != 0) {
+                continue;
+            }
+            ++newFiles;
+            EXPECT_EQ(file.find("/data/log/hitrace/trace_"), 0u);
+            EXPECT_GT(GetFileSize(file), 0);
+            EXPECT_NE(std::find(ret.outputFiles.begin(), ret.outputFiles.end(), file), ret.outputFiles.end());
+            char source[16] = {};
+            const ssize_t len = TEMP_FAILURE_RETRY(getxattr(file.c_str(), "user.trace_source", source, sizeof(source)));
+            EXPECT_EQ(len, 4) << file;
+            if (len > 0) {
+                EXPECT_EQ(std::string(source, static_cast<size_t>(len)), "user") << file;
+            }
+            EXPECT_EQ(remove(file.c_str()), 0);
+        }
+        EXPECT_EQ(newFiles, 1u) << path;
+    }
+}
+
+/**
+ * @tc.name: SourceTag001
+ * @tc.desc: Verify source xattrs on newly generated system and user traces.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceSourceXattrTest, SourceTag001, TestSize.Level2)
+{
+    std::set<std::string> before;
+    GetTraceFileNamesInDir(before, TraceDumpType::TRACE_SNAPSHOT);
+    const std::string userPath = "/data/local/tmp/trace_source_xattr_" + std::to_string(getpid()) + ".sys";
+    ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), TraceErrorCode::SUCCESS);
+
+    sleep(2);
+    TraceRetInfo systemRet = DumpTrace();
+    std::set<std::string> afterSystem;
+    GetTraceFileNamesInDir(afterSystem, TraceDumpType::TRACE_SNAPSHOT);
+    sleep(2);
+    TraceRetInfo userRet = DumpTrace(0, 0, userPath);
+    EXPECT_EQ(CloseTrace(), TraceErrorCode::SUCCESS);
+
+    std::vector<std::string> newSystemFiles;
+    for (const auto& file : afterSystem) {
+        if (before.count(file) == 0) {
+            newSystemFiles.push_back(file);
+        }
+    }
+    EXPECT_EQ(systemRet.errorCode, TraceErrorCode::SUCCESS);
+    EXPECT_EQ(newSystemFiles.size(), 1u);
+    EXPECT_EQ(userRet.errorCode, TraceErrorCode::SUCCESS);
+    EXPECT_NE(std::find(userRet.outputFiles.begin(), userRet.outputFiles.end(), userPath), userRet.outputFiles.end());
+
+    auto checkSource = [](const std::string& file, const std::string& expected) {
+        char value[16] = {};
+        ssize_t len = TEMP_FAILURE_RETRY(getxattr(file.c_str(), "user.trace_source", value, sizeof(value)));
+        EXPECT_EQ(len, static_cast<ssize_t>(expected.size())) << file << ", errno=" << errno;
+        if (len > 0) {
+            EXPECT_EQ(std::string(value, static_cast<size_t>(len)), expected) << file;
+            GTEST_LOG_(INFO) << file << " user.trace_source=" << std::string(value, static_cast<size_t>(len));
+        }
+    };
+    for (const auto& file : newSystemFiles) {
+        checkSource(file, "system");
+        EXPECT_EQ(remove(file.c_str()), 0);
+    }
+    bool userFileExists = access(userPath.c_str(), F_OK) == 0;
+    EXPECT_TRUE(userFileExists);
+    if (userFileExists) {
+        checkSource(userPath, "user");
+        EXPECT_EQ(remove(userPath.c_str()), 0);
+    }
+}
 } // namespace

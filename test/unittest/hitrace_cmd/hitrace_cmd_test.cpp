@@ -672,6 +672,34 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest014, TestSize.Level1)
 }
 
 /**
+ * @tc.name: SnapshotDumpToDefaultDirectory
+ * @tc.desc: Snapshot output accepts the default directory with or without a trailing slash.
+ * @tc.type: FUNC
+ */
+HWTEST_F(HitraceCMDTest, SnapshotDumpToDefaultDirectory, TestSize.Level1)
+{
+    ASSERT_TRUE(CheckTraceCommandOutput("hitrace --start_bgsrv", {"OpenSnapshot done"}));
+    for (const std::string path : {"/data/log/hitrace", "/data/log/hitrace/"}) {
+        EXPECT_TRUE(CheckTraceCommandOutput("hitrace --dump_bgsrv -o " + path,
+            {"DumpSnapshot done", "/data/log/hitrace/trace_"})) << path;
+    }
+    EXPECT_TRUE(CheckTraceCommandOutput("hitrace --stop_bgsrv", {"CloseSnapshot done"}));
+}
+
+/**
+ * @tc.name: SnapshotDumpRejectsInvalidDefaultPath
+ * @tc.desc: Snapshot output rejects paths outside the exact default directory.
+ * @tc.type: FUNC
+ */
+HWTEST_F(HitraceCMDTest, SnapshotDumpRejectsInvalidDefaultPath, TestSize.Level1)
+{
+    for (const std::string path : {"/data/log/hitrace-other", "/data/log/hitrace/../outside.sys",
+        "/data/log/hitrace/custom.sys"}) {
+        EXPECT_TRUE(CheckTraceCommandOutput("hitrace --dump_bgsrv -o " + path, {"error: illegal path"})) << path;
+    }
+}
+
+/**
  * @tc.name: HitraceCMDTest015
  * @tc.desc: test normal text trace dump with longopt input parameters
  * @tc.type: FUNC

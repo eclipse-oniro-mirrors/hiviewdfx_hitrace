@@ -17,6 +17,7 @@
 #define FILE_AGEING_UTILS_H
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "nocopyable.h"
@@ -35,6 +36,8 @@ class FileAgeingUtils {
 public:
     static void HandleAgeing(std::vector<TraceFileInfo>& fileList, const TraceDumpType traceType,
                             int64_t setTotalSize = 0);
+    static int AgeTraceFiles(std::vector<TraceFileInfo>& fileList, uint32_t retentionSecond,
+                             const std::string& directory);
 
 private:
     FileAgeingUtils();

@@ -49,6 +49,7 @@ struct TimestampRange {
 void GetTraceFilesInDir(std::vector<TraceFileInfo>& fileList, TraceDumpType traceType);
 void GetTraceFileNamesInDir(std::set<std::string>& fileSet, TraceDumpType traceType);
 bool RemoveFile(const std::string& fileName);
+bool IsDefaultTraceDirectory(const std::string& path);
 bool IsWritable(const std::string& fileName);
 bool IsWritableDir(const std::string& fileName);
 std::string GenerateTraceFileName(TraceDumpType traceType, const std::string& outputPath = "");

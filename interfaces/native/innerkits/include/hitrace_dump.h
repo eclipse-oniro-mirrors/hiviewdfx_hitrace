@@ -73,10 +73,24 @@ TraceErrorCode OpenTrace(const std::vector<std::string>& tagGroups);
  * ---- If maxDuration is less than 0, it is illegal input parameter.
  * utTraceEndTime: the retrospective starting time stamp of target trace.
  * ----If utTraceEndTime = 0, it is not set.
+ * outputPath: empty uses the default trace directory. Explicit /data/log/hitrace (with or without
+ * a trailing slash) generates a filename there; /data/local/tmp paths may specify a file or directory.
+ * A nonempty outputPath marks newly generated files as user traces.
  * return TraceErrorCode::SUCCESS if any trace is captured between the designated interval
  * return TraceErrorCode::OUT_OF_TIME otherwise.
 */
 TraceRetInfo DumpTrace(uint32_t maxDuration = 0, uint64_t utTraceEndTime = 0, const std::string& outputPath = "");
+
+/**
+ * Remove expired system trace files from the default trace directory.
+ * Only files marked as system traces with a modification time strictly earlier than
+ * the current time minus retentionSecond seconds are removed. Developer and unmarked
+ * files, locked files, and non-regular files are retained. OpenTrace is not required.
+ * A zero retentionSecond uses the same strict time comparison.
+ * Return SUCCESS if ageing completes (including when no file is removed), FILE_ERROR
+ * on an I/O error. The call shares the trace lock with other trace operations.
+ */
+int AgeTraceFile(uint32_t retentionSecond);
 
 /**
  * Reading trace data once from ftrace ringbuffer in the kernel.
