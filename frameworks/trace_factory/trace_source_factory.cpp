@@ -17,7 +17,10 @@
 
 #include <fcntl.h>
 #include <hilog/log.h>
+#include <cerrno>
+#include <cstring>
 #include <string>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 #include "common_utils.h"
@@ -68,6 +71,19 @@ ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath) : tra
 const std::string& ITraceSourceFactory::GetTraceFilePath()
 {
     return traceFilePath_;
+}
+
+bool ITraceSourceFactory::SetTraceSource(TraceFileSource source)
+{
+    if (source == TraceFileSource::UNKNOWN) {
+        return true;
+    }
+    const char* value = source == TraceFileSource::SYSTEM ? "system" : "user";
+    if (TEMP_FAILURE_RETRY(fsetxattr(traceFileFd_.GetFd(), "user.trace_source", value, strlen(value), 0)) != 0) {
+        HILOG_ERROR(LOG_CORE, "Set trace source xattr failed, errno %{public}d", errno);
+        return false;
+    }
+    return true;
 }
 
 bool ITraceSourceFactory::UpdateTraceFile(const std::string& traceFilePath)

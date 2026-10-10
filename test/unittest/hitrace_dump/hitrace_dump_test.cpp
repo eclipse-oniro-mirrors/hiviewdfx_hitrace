@@ -16,10 +16,13 @@
 #include "hitrace_dump.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <dirent.h>
 #include <fcntl.h>
 #include <fstream>
+#include <future>
 #include <gtest/gtest.h>
 #include <iostream>
 #include <map>
@@ -28,6 +31,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <sys/stat.h>
 #include <sys/xattr.h>
 #include <unistd.h>
 #include <vector>
@@ -35,6 +39,7 @@
 #include "common_define.h"
 #include "common_utils.h"
 #include "dynamic_buffer.h"
+#include "file_ageing_utils.h"
 #include "hitrace_define.h"
 #include "hitrace_option_util.h"
 #include "hilog/log.h"
@@ -1671,7 +1676,113 @@ public:
     {
         system("service_control start hiview");
     }
+
+    void SetUp() override
+    {
+        GetTraceFileNamesInDir(originalFiles_, TraceDumpType::TRACE_SNAPSHOT);
+        GetTraceFileNamesInDir(originalFiles_, TraceDumpType::TRACE_CACHE);
+        char directory[] = "/data/local/tmp/trace_source_test_XXXXXX";
+        ASSERT_NE(mkdtemp(directory), nullptr);
+        directory_ = directory;
+    }
+
+    void TearDown() override
+    {
+        CloseTrace();
+        std::set<std::string> files;
+        GetTraceFileNamesInDir(files, TraceDumpType::TRACE_SNAPSHOT);
+        GetTraceFileNamesInDir(files, TraceDumpType::TRACE_CACHE);
+        for (const auto& file : files) {
+            if (originalFiles_.count(file) == 0) {
+                EXPECT_EQ(remove(file.c_str()), 0) << file;
+            }
+        }
+        if (!directory_.empty()) {
+            const bool traversed = TraverseFiles(directory_, false, [](const char* directory, const dirent* entry) {
+                const std::string file = std::string(directory) + "/" + entry->d_name;
+                EXPECT_EQ(remove(file.c_str()), 0) << file;
+            });
+            EXPECT_TRUE(traversed);
+            EXPECT_EQ(rmdir(directory_.c_str()), 0);
+        }
+    }
+
+    void CheckNewSystemFilesAge(const std::vector<std::string>& files)
+    {
+        constexpr char expectedSource[] = "system";
+        constexpr uint32_t retentionSeconds = 1;
+        std::vector<TraceFileInfo> newFiles;
+        for (const auto& file : files) {
+            if (originalFiles_.count(file) != 0) {
+                continue;
+            }
+            char source[16] = {};
+            const ssize_t len = getxattr(file.c_str(), "user.trace_source", source, sizeof(source));
+            EXPECT_EQ(len, static_cast<ssize_t>(sizeof(expectedSource) - 1)) << file;
+            if (len > 0) {
+                EXPECT_EQ(std::string(source, static_cast<size_t>(len)), expectedSource) << file;
+            }
+            const std::string isolatedFile = directory_ + "/" + GetFileNameFromPath(file);
+            ASSERT_EQ(rename(file.c_str(), isolatedFile.c_str()), 0);
+            timespec times[2] = {};
+            ASSERT_EQ(clock_gettime(CLOCK_REALTIME, &times[0]), 0);
+            times[0].tv_sec -= retentionSeconds + 1;
+            times[1] = times[0];
+            ASSERT_EQ(utimensat(AT_FDCWD, isolatedFile.c_str(), times, 0), 0);
+            newFiles.emplace_back(isolatedFile);
+        }
+        ASSERT_FALSE(newFiles.empty());
+        const auto generatedFiles = newFiles;
+        EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(newFiles, retentionSeconds, directory_), SUCCESS);
+        EXPECT_TRUE(newFiles.empty());
+        for (const auto& file : generatedFiles) {
+            EXPECT_NE(access(file.filename.c_str(), F_OK), 0) << file.filename;
+        }
+    }
+
+private:
+    std::set<std::string> originalFiles_;
+    std::string directory_;
 };
+
+/**
+ * @tc.name: AsyncSystemTraceAgeing
+ * @tc.desc: Completed asynchronous system snapshots are tagged and can be aged.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceSourceXattrTest, AsyncSystemTraceAgeing, TestSize.Level2)
+{
+    ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
+    sleep(2);
+    auto completion = std::make_shared<std::promise<TraceRetInfo>>();
+    auto result = completion->get_future();
+    const auto ret = DumpTraceAsync(0, 0, INT64_MAX, [completion](TraceRetInfo info) {
+        completion->set_value(info);
+    });
+    EXPECT_EQ(ret.errorCode, SUCCESS);
+    ASSERT_EQ(result.wait_for(std::chrono::seconds(30)), std::future_status::ready);
+    const auto completed = result.get();
+    EXPECT_EQ(completed.errorCode, SUCCESS);
+    EXPECT_EQ(CloseTrace(), SUCCESS);
+    CheckNewSystemFilesAge(completed.outputFiles);
+}
+
+/**
+ * @tc.name: CachedSystemTraceAgeing
+ * @tc.desc: Cached slices retain their system source when promoted to snapshots and can be aged.
+ * @tc.type: FUNC
+ */
+HWTEST_F(TraceSourceXattrTest, CachedSystemTraceAgeing, TestSize.Level2)
+{
+    ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
+    ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS); // 50 MB cache, one-second slices
+    sleep(3);
+    const auto ret = DumpTrace();
+    EXPECT_EQ(ret.errorCode, SUCCESS);
+    EXPECT_EQ(CacheTraceOff(), SUCCESS);
+    EXPECT_EQ(CloseTrace(), SUCCESS);
+    CheckNewSystemFilesAge(ret.outputFiles);
+}
 
 /**
  * @tc.name: DefaultDirectorySourceTag

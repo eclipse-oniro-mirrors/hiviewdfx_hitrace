@@ -62,6 +62,12 @@ enum TraceErrorCode : uint8_t {
     UNSET = 255,
 };
 
+enum class TraceFileSource : uint8_t {
+    UNKNOWN = 0,
+    SYSTEM,
+    USER,
+};
+
 struct TraceDumpRequest {
     TraceDumpType type = TraceDumpType::TRACE_SNAPSHOT;
     int fileSize = 0; // bytes
@@ -70,6 +76,7 @@ struct TraceDumpRequest {
     uint64_t traceEndTime = std::numeric_limits<uint64_t>::max();
     uint64_t taskId = 0;
     uint64_t cacheSliceDuration = 0;
+    TraceFileSource source = TraceFileSource::UNKNOWN;
 };
 
 struct TraceRetInfo {

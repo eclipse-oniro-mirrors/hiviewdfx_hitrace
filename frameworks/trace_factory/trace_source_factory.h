@@ -45,6 +45,7 @@ public:
     virtual std::unique_ptr<ITraceCpuRawWrite> GetTraceCpuRawWrite(const uint64_t taskId) = 0;
     virtual const std::string& GetTraceFilePath();
     virtual bool UpdateTraceFile(const std::string& traceFilePath);
+    bool SetTraceSource(TraceFileSource source);
 protected:
     SmartFd traceFileFd_;
     std::string traceFilePath_;

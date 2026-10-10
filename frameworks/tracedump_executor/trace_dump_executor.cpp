@@ -154,7 +154,8 @@ TraceDumpRet TraceDumpExecutor::DumpTrace(const TraceDumpParam& param, const std
 {
     MarkClockSync(Hitrace::GetTraceRootPath());
     std::string traceFile = GenerateTraceFileName(param.type, outputPath);
-    return DumpTraceInner(param, traceFile);
+    const auto source = outputPath.empty() ? TraceFileSource::SYSTEM : TraceFileSource::USER;
+    return DumpTraceInner(param, traceFile, source);
 }
 
 std::vector<TraceFileInfo> TraceDumpExecutor::GetCacheTraceFiles()
@@ -446,7 +447,8 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         .limitFileSz = isLimited,
         .traceStartTime = param.traceStartTime,
         .traceEndTime = param.traceEndTime,
-        .cacheSliceDuration = param.cacheSliceDuration
+        .cacheSliceDuration = param.cacheSliceDuration,
+        .source = param.type == TraceDumpType::TRACE_CACHE ? TraceFileSource::SYSTEM : TraceFileSource::UNKNOWN
     };
     auto dumpRet = ExecuteDumpTrace(traceSourceFactory, request);
     HILOG_INFO(LOG_CORE, "DoDumpTraceLoop: ExecuteDumpTrace done, errorcode: %{public}d, tracefile: %{public}s",
@@ -456,15 +458,8 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         return false;
     }
     traceFile = traceSourceFactory->GetTraceFilePath();
-    if (param.type == TraceDumpType::TRACE_CACHE) {
-        TraceFileInfo traceFileInfo;
-        TimestampRange range{dumpRet.traceStartTime, dumpRet.traceEndTime};
-        if (!SetFileInfo(true, traceFile, range, traceFileInfo)) {
-            RemoveFile(traceFile);
-            return false;
-        }
-        traceFile = traceFileInfo.filename;
-        cacheTraceFiles_.emplace_back(traceFileInfo);
+    if (param.type == TraceDumpType::TRACE_CACHE && !SaveCacheTraceFile(traceFile, dumpRet)) {
+        return false;
     }
     if (access(traceFile.c_str(), F_OK) == -1) {
         HILOG_ERROR(LOG_CORE, "DoDumpTraceLoop : Trace file (%{public}s) not found.", traceFile.c_str());
@@ -473,7 +468,21 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
     return true;
 }
 
-TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile)
+bool TraceDumpExecutor::SaveCacheTraceFile(std::string& traceFile, const TraceDumpRet& dumpRet)
+{
+    TraceFileInfo traceFileInfo;
+    TimestampRange range{dumpRet.traceStartTime, dumpRet.traceEndTime};
+    if (!SetFileInfo(true, traceFile, range, traceFileInfo)) {
+        RemoveFile(traceFile);
+        return false;
+    }
+    traceFile = traceFileInfo.filename;
+    cacheTraceFiles_.emplace_back(traceFileInfo);
+    return true;
+}
+
+TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile,
+    TraceFileSource source)
 {
     std::shared_ptr<ITraceSourceFactory> traceSourceFactory = nullptr;
     if (Hitrace::GetTraceRootPath().empty()) {
@@ -489,7 +498,8 @@ TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, cons
     TraceDumpRequest request = {
         .type = param.type,
         .traceStartTime = param.traceStartTime,
-        .traceEndTime = param.traceEndTime
+        .traceEndTime = param.traceEndTime,
+        .source = source
     };
     return ExecuteDumpTrace(traceSourceFactory, request);
 }
@@ -552,7 +562,8 @@ bool TraceDumpExecutor::DoWriteRawTrace(TraceDumpTask& task)
         .type = TraceDumpType::TRACE_ASYNC_WRITE,
         .traceStartTime = task.traceStartTime,
         .traceEndTime = task.traceEndTime,
-        .taskId = task.time
+        .taskId = task.time,
+        .source = TraceFileSource::SYSTEM
     };
     auto ret = ExecuteDumpTrace(traceSourceFactory, request);
     task.code = ret.code;

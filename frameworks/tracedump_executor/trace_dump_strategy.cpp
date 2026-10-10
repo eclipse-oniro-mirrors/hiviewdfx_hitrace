@@ -115,6 +115,13 @@ bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceF
     }
 
     ExecutePostProcessing(traceContentPtr);
+    // Publish the source only after all file contents have been written.
+    if (ret.code == TraceErrorCode::SUCCESS && request.type != TraceDumpType::TRACE_ASYNC_READ &&
+        !traceSourceFactory->SetTraceSource(request.source)) {
+        RemoveFile(CanonicalizeSpecPath(traceSourceFactory->GetTraceFilePath().c_str()));
+        ret.code = TraceErrorCode::WRITE_TRACE_INFO_ERROR;
+        return false;
+    }
     return true;
 }
 
