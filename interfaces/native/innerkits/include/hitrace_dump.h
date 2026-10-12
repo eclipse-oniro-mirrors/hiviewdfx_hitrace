@@ -68,7 +68,8 @@ TraceErrorCode OpenTrace(const std::vector<std::string>& tagGroups);
 /**
  * Reading trace data once from ftrace ringbuffer in the kernel.
  * Using child processes to process trace tasks.
- * Newly written asynchronous snapshots are marked as system traces after writing completes.
+ * Files created by system requests are marked before writing, including files left after write failures.
+ * System writers hold a file lock until writing ends; source tags do not indicate successful completion.
  * maxDuration: the maximum time(s) allowed for the trace task.
  * ---- If maxDuration is 0, means that is no limit for the trace task.
  * ---- If maxDuration is less than 0, it is illegal input parameter.
@@ -96,6 +97,7 @@ int AgeTraceFile(uint32_t retentionSecond);
 /**
  * Reading trace data once from ftrace ringbuffer in the kernel.
  * Using child processes to process trace tasks.
+ * Newly created output files have system source tags even if writing fails.
  * maxDuration: the maximum time(s) allowed for the trace task.
  * ---- If maxDuration is 0, means that is no limit for the trace task.
  * ---- If maxDuration is less than 0, it is illegal input parameter.

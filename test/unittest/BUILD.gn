@@ -664,6 +664,7 @@ ohos_unittest("HitraceDumpExecutorNewTest") {
     "$hitrace_frameworks_path/tracedump_executor/trace_strategy_factory.cpp",
     "$hitrace_utils_path/file_ageing_utils.cpp",
     "tracedump_executor/trace_dump_executor_test.cpp",
+    "tracedump_executor/trace_source_policy_test.cpp",
   ]
   
 

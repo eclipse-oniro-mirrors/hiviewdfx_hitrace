@@ -100,6 +100,13 @@ TraceDumpRet ITraceDumpStrategy::Execute(std::shared_ptr<ITraceSourceFactory> tr
 bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
     const TraceDumpRequest& request, TraceDumpRet& ret, int& newFileCount)
 {
+    // Source identifies the request even if initialization or writing later fails.
+    if (request.type != TraceDumpType::TRACE_ASYNC_READ && request.source == TraceFileSource::SYSTEM &&
+        !traceSourceFactory->PrepareSystemTrace()) {
+        RemoveFile(CanonicalizeSpecPath(traceSourceFactory->GetTraceFilePath().c_str()));
+        ret = {TraceErrorCode::WRITE_TRACE_INFO_ERROR, "", 0, 0, 0};
+        return false;
+    }
     TraceContentPtr traceContentPtr;
     if (!InitializeTraceContent(traceSourceFactory, request, traceContentPtr)) {
         HILOG_ERROR(LOG_CORE,
@@ -115,8 +122,7 @@ bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceF
     }
 
     ExecutePostProcessing(traceContentPtr);
-    // Publish the source only after all file contents have been written.
-    if (ret.code == TraceErrorCode::SUCCESS && request.type != TraceDumpType::TRACE_ASYNC_READ &&
+    if (ret.code == TraceErrorCode::SUCCESS && request.source == TraceFileSource::USER &&
         !traceSourceFactory->SetTraceSource(request.source)) {
         RemoveFile(CanonicalizeSpecPath(traceSourceFactory->GetTraceFilePath().c_str()));
         ret.code = TraceErrorCode::WRITE_TRACE_INFO_ERROR;

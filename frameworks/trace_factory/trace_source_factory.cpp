@@ -20,6 +20,7 @@
 #include <cerrno>
 #include <cstring>
 #include <string>
+#include <sys/file.h>
 #include <sys/xattr.h>
 #include <unistd.h>
 
@@ -71,6 +72,20 @@ ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath) : tra
 const std::string& ITraceSourceFactory::GetTraceFilePath()
 {
     return traceFilePath_;
+}
+
+bool ITraceSourceFactory::PrepareSystemTrace()
+{
+    if (TEMP_FAILURE_RETRY(flock(traceFileFd_.GetFd(), LOCK_EX | LOCK_NB)) != 0) {
+        HILOG_ERROR(LOG_CORE, "Lock system trace file failed, errno %{public}d", errno);
+        return false;
+    }
+    if (!SetTraceSource(TraceFileSource::SYSTEM)) {
+        traceFileFd_.Reset();
+        return false;
+    }
+    // Keep the file locked until the writer closes or replaces its fd.
+    return true;
 }
 
 bool ITraceSourceFactory::SetTraceSource(TraceFileSource source)
