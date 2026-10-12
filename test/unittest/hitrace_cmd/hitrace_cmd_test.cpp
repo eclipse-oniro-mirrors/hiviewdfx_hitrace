@@ -118,9 +118,11 @@ public:
 
     void ExpectUserSource(const std::string& path)
     {
+        constexpr char expected[] = "user";
         char source[16] = {};
-        ASSERT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)), 4);
-        EXPECT_STREQ(source, "user");
+        ASSERT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)),
+            static_cast<ssize_t>(sizeof(expected) - 1));
+        EXPECT_STREQ(source, expected);
     }
 
     static void RunCmd(const string& cmd)

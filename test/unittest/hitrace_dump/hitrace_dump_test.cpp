@@ -1904,6 +1904,25 @@ HWTEST_F(TraceSourceXattrTest, ReusingSnapshotPreservesConvertedUserSource, Test
     EXPECT_EQ(CloseTrace(), SUCCESS);
 }
 
+
+HWTEST_F(TraceSourceXattrTest, CacheLikeSnapshotNameKeepsUserSource, TestSize.Level2)
+{
+    const std::string userFile = directory_ + "/cache_trace_user.sys";
+    ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
+    sleep(2);
+    const auto userRet = DumpTrace(0, 0, userFile);
+    ASSERT_EQ(userRet.errorCode, SUCCESS);
+    CheckNewFilesSource({userFile}, "user");
+    sleep(1);
+    const auto systemRet = DumpTrace();
+    EXPECT_EQ(systemRet.errorCode, SUCCESS);
+    EXPECT_EQ(CloseTrace(), SUCCESS);
+    EXPECT_NE(std::find(systemRet.outputFiles.begin(), systemRet.outputFiles.end(), userFile),
+        systemRet.outputFiles.end()) << userFile;
+    CheckNewFilesSource({userFile}, "user");
+    EXPECT_NE(access((directory_ + "/trace_user.sys").c_str(), F_OK), 0);
+}
+
 /**
  * @tc.name: DefaultDirectorySourceTag
  * @tc.desc: Explicit default directories produce new files marked as user traces.

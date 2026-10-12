@@ -469,11 +469,13 @@ TraceErrorCode SearchTraceFiles(const uint64_t& inputTraceStartTime, const uint6
         PRIu64 "].", curTime, inputTraceStartTime, inputTraceEndTime);
     std::vector<TraceFileInfo> targetFiles;
     GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, g_traceFileVec, targetFiles);
+    const size_t cacheStart = targetFiles.size();
     auto inputCacheFiles = TraceDumpExecutor::GetInstance().GetCacheTraceFiles();
     GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, inputCacheFiles, targetFiles);
     TraceErrorCode result = SUCCESS;
-    for (auto& file : targetFiles) {
-        if (file.filename.find(CACHE_FILE_PREFIX) != std::string::npos) {
+    for (size_t i = 0; i < targetFiles.size(); ++i) {
+        auto& file = targetFiles[i];
+        if (i >= cacheStart) {
             const auto snapshot = RenameCacheFile(file.filename, source);
             if (snapshot.empty()) {
                 result = WRITE_TRACE_INFO_ERROR;

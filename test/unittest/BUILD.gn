@@ -114,6 +114,7 @@ ohos_unittest("HitraceMeterTest") {
 
   sources = [
     "$hitrace_interfaces_path/native/innerkits/src/hitrace_meter.cpp",
+    "hitrace_meter/app_trace_source_test.cpp",
     "hitrace_meter/hitrace_meter_test.cpp",
     "hitrace_meter/hitrace_meter_test_utils.cpp",
   ]
@@ -522,6 +523,7 @@ ohos_unittest("HitraceCMDTest") {
 
   sources = [
     "$hitrace_cmd_path/hitrace_cmd.cpp",
+    "$hitrace_cmd_path/trace_output.cpp",
     "hitrace_cmd/hitrace_cmd_test.cpp",
   ]
 
