@@ -22,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 #include <vector>
 
@@ -113,6 +114,13 @@ public:
         std::string output = coutBuffer.str();
         coutBuffer.str("");
         return output;
+    }
+
+    void ExpectUserSource(const std::string& path)
+    {
+        char source[16] = {};
+        ASSERT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)), 4);
+        EXPECT_STREQ(source, "user");
     }
 
     static void RunCmd(const string& cmd)
@@ -730,6 +738,42 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest015, TestSize.Level1)
     ASSERT_TRUE(CheckTraceCommandOutput(cmdStop, keywordsStop));
 
     GTEST_LOG_(INFO) << "HitraceCMDTest015: end.";
+}
+
+
+HWTEST_F(HitraceCMDTest, TextAndCompressedOutputUseUserSource, TestSize.Level1)
+{
+    ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_begin sched -b 1024 --overwrite", {"OpenRecording done"}));
+    for (const std::string option : {std::string(), std::string(" -z")}) {
+        ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_dump -o /data/local/tmp/testtrace.txt" + option,
+            {"trace read done"}));
+        ExpectUserSource("/data/local/tmp/testtrace.txt");
+    }
+    EXPECT_TRUE(CheckTraceCommandOutput("hitrace --trace_finish_nodump", {"end capture trace"}));
+}
+
+HWTEST_F(HitraceCMDTest, RedirectedTextOutputUsesUserSource, TestSize.Level1)
+{
+    ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_begin sched -b 1024 --overwrite", {"OpenRecording done"}));
+    FILE* output = fopen("/data/local/tmp/testtrace.txt", "w");
+    ASSERT_NE(output, nullptr);
+    const int savedStdout = dup(STDOUT_FILENO);
+    if (savedStdout < 0) {
+        fclose(output);
+        FAIL() << "Cannot save stdout";
+    }
+    fflush(stdout);
+    const int redirected = dup2(fileno(output), STDOUT_FILENO);
+    if (redirected >= 0) {
+        RunCmd("hitrace --trace_dump");
+    }
+    fflush(stdout);
+    EXPECT_EQ(dup2(savedStdout, STDOUT_FILENO), STDOUT_FILENO);
+    close(savedStdout);
+    fclose(output);
+    ASSERT_GE(redirected, 0);
+    ExpectUserSource("/data/local/tmp/testtrace.txt");
+    EXPECT_TRUE(CheckTraceCommandOutput("hitrace --trace_finish_nodump", {"end capture trace"}));
 }
 
 /**
@@ -1506,6 +1550,7 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest044, TestSize.Level1)
     EXPECT_NE(output.find("boot_trace: wrote"), std::string::npos) << output;
     std::string traceContent = ReadFileContent(std::string(BOOT_TRACE_CONFIG_DIR) + fileName);
     EXPECT_FALSE(traceContent.empty()) << "boot-trace should respect configured output path";
+    ExpectUserSource(customOut);
 
     RemoveBootTraceOutput(fileName);
     RemoveBootTraceConfig();

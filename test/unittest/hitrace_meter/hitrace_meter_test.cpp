@@ -17,6 +17,7 @@
 #include <vector>
 #include <string>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 
 #include "common_define.h"
 #include "common_utils.h"
@@ -1985,6 +1986,10 @@ HWTEST_F(HitraceMeterTest, CaptureAppTraceTest004, TestSize.Level1)
     ret = StopCaptureAppTrace();
     ASSERT_EQ(ret, RetType::RET_SUCC);
 
+    char source[16] = {};
+    ASSERT_EQ(getxattr(filePath.c_str(), "user.trace_source", source, sizeof(source)), 4);
+    EXPECT_STREQ(source, "user");
+
     std::vector<std::string> list = ReadTrace(filePath);
     char record[RECORD_SIZE_MAX + 1] = {0};
     TraceInfo traceInfo = {'B', HITRACE_LEVEL_COMMERCIAL, TAG, number, name, customCategory, customArgs};
@@ -2034,6 +2039,10 @@ HWTEST_F(HitraceMeterTest, CaptureAppTraceTest005, TestSize.Level1)
 
     ret = StopCaptureAppTrace();
     ASSERT_EQ(ret, RetType::RET_SUCC);
+
+    char source[16] = {};
+    ASSERT_EQ(getxattr(filePath.c_str(), "user.trace_source", source, sizeof(source)), 4);
+    EXPECT_STREQ(source, "user");
 
     std::vector<std::string> list = ReadTrace(filePath);
     char record[RECORD_SIZE_MAX + 1] = {0};

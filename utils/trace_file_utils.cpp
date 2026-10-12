@@ -508,12 +508,20 @@ void RefreshTraceVec(std::vector<TraceFileInfo>& traceVec, const TraceDumpType t
     }
 }
 
-std::string RenameCacheFile(const std::string& cacheFile)
+std::string RenameCacheFile(const std::string& cacheFile, TraceFileSource source)
 {
     std::string fileName = cacheFile.substr(cacheFile.find_last_of("/") + 1);
     std::string::size_type pos = fileName.find(CACHE_FILE_PREFIX);
     if (pos == std::string::npos) {
         return cacheFile;
+    }
+    SmartFd fd(open(cacheFile.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+    if (!fd || TEMP_FAILURE_RETRY(flock(fd.GetFd(), LOCK_EX | LOCK_NB)) != 0) {
+        HILOG_ERROR(LOG_CORE, "Lock cache for conversion failed, errno %{public}d", errno);
+        return "";
+    }
+    if (!SetTraceFileSource(fd.GetFd(), source)) {
+        return "";
     }
     std::string dirPath = cacheFile.substr(0, cacheFile.find_last_of("/") + 1);
     const size_t cacheFilePrefixLen = strlen(CACHE_FILE_PREFIX);
@@ -522,7 +530,10 @@ std::string RenameCacheFile(const std::string& cacheFile)
     if (rename(cacheFile.c_str(), newFilePath.c_str()) != 0) {
         HILOG_ERROR(LOG_CORE, "rename %{public}s to %{public}s failed, errno: %{public}d.",
             cacheFile.c_str(), newFilePath.c_str(), errno);
-        return cacheFile;
+        if (!SetTraceFileSource(fd.GetFd(), TraceFileSource::SYSTEM)) {
+            HILOG_ERROR(LOG_CORE, "Restore cache source failed: %{public}s", cacheFile.c_str());
+        }
+        return "";
     }
     HILOG_INFO(LOG_CORE, "rename %{public}s to %{public}s success.", cacheFile.c_str(), newFilePath.c_str());
     return newFilePath;

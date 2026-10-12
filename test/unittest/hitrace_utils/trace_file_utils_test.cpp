@@ -17,11 +17,15 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <string>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 #include <vector>
 #include "trace_file_utils.h"
+#include "common_utils.h"
+#include "smart_fd.h"
 
 using namespace testing::ext;
 using namespace std;
@@ -190,6 +194,14 @@ protected:
         return directory_ + "/" + name;
     }
 
+    void ExpectSource(const std::string& path, const std::string& expected)
+    {
+        char source[16] = {};
+        ASSERT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)),
+            static_cast<ssize_t>(expected.size()));
+        EXPECT_STREQ(source, expected.c_str());
+    }
+
     bool AddCacheFile(const std::string& name)
     {
         const auto path = Path(name);
@@ -279,7 +291,7 @@ HWTEST_F(CacheTraceFileSizeTest, PromotedFileLeavesCacheBudget, TestSize.Level1)
 {
     ASSERT_TRUE(AddCacheFile("cache_trace_A"));
     ASSERT_TRUE(AddCacheFiles("BCD"));
-    const auto promoted = Hitrace::RenameCacheFile(Path("cache_trace_A"));
+    const auto promoted = Hitrace::RenameCacheFile(Path("cache_trace_A"), Hitrace::TraceFileSource::SYSTEM);
     createdFiles_.push_back(promoted);
     ASSERT_EQ(promoted, Path("trace_A"));
     Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 3 * fileSize);
@@ -323,5 +335,50 @@ HWTEST_F(CacheTraceFileSizeTest, ZeroLimitAndEmptyCache, TestSize.Level1)
     Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 0);
     ExpectFiles("");
 }
+
+HWTEST_F(CacheTraceFileSizeTest, ConversionUsesRequestSourceAndPreservesMtime, TestSize.Level1)
+{
+    for (const auto source : {Hitrace::TraceFileSource::USER, Hitrace::TraceFileSource::SYSTEM}) {
+        ASSERT_TRUE(AddCacheFile("cache_trace_A"));
+        const auto cache = Path("cache_trace_A");
+        ASSERT_EQ(setxattr(cache.c_str(), "user.trace_source", "system", 6, 0), 0);
+        timespec times[2] = {{1, 0}, {1, 0}};
+        ASSERT_EQ(utimensat(AT_FDCWD, cache.c_str(), times, 0), 0);
+        const auto snapshot = Hitrace::RenameCacheFile(cache, source);
+        createdFiles_.push_back(snapshot);
+        ASSERT_EQ(snapshot, Path("trace_A"));
+        ExpectSource(snapshot, source == Hitrace::TraceFileSource::USER ? "user" : "system");
+        struct stat info {};
+        ASSERT_EQ(stat(snapshot.c_str(), &info), 0);
+        EXPECT_EQ(info.st_mtim.tv_sec, 1);
+        EXPECT_EQ(info.st_mtim.tv_nsec, 0);
+        EXPECT_NE(access(cache.c_str(), F_OK), 0);
+        ASSERT_EQ(remove(snapshot.c_str()), 0);
+        cacheFiles_.clear();
+    }
+}
+
+HWTEST_F(CacheTraceFileSizeTest, FailedConversionRestoresCacheSource, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFile("cache_trace_A"));
+    const auto cache = Path("cache_trace_A");
+    ASSERT_EQ(setxattr(cache.c_str(), "user.trace_source", "system", 6, 0), 0);
+    ASSERT_EQ(mkdir(Path("trace_A").c_str(), 0700), 0);
+    createdFiles_.push_back(Path("trace_A"));
+    EXPECT_TRUE(Hitrace::RenameCacheFile(cache, Hitrace::TraceFileSource::USER).empty());
+    EXPECT_EQ(access(cache.c_str(), F_OK), 0);
+    ExpectSource(cache, "system");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, InvalidSourceDoesNotReplaceExistingTag, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFile("A"));
+    SmartFd fd(open(Path("A").c_str(), O_RDONLY));
+    ASSERT_TRUE(fd);
+    ASSERT_TRUE(Hitrace::SetTraceFileSource(fd.GetFd(), Hitrace::TraceFileSource::USER));
+    EXPECT_FALSE(Hitrace::SetTraceFileSource(fd.GetFd(), static_cast<Hitrace::TraceFileSource>(255)));
+    ExpectSource(Path("A"), "user");
+}
+
 } // namespace HiviewDFX
 } // namespace OHOS

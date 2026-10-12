@@ -125,6 +125,19 @@ class CacheFailureStrategy : public CacheTraceDumpStrategy {
 protected:
     bool NeedDoPreAndPost() const override { return false; }
 };
+
+class RecordFailureStrategy : public RecordTraceDumpStrategy {
+protected:
+    bool NeedDoPreAndPost() const override { return false; }
+};
+
+void ExpectSource(const std::string& file, const std::string& expected)
+{
+    char source[16] = {};
+    ASSERT_EQ(getxattr(file.c_str(), "user.trace_source", source, sizeof(source)),
+        static_cast<ssize_t>(expected.size()));
+    EXPECT_STREQ(source, expected.c_str());
+}
 }
 
 class TraceSourcePolicyTest : public testing::Test {
@@ -149,7 +162,8 @@ public:
         EXPECT_EQ(rmdir(directory_.c_str()), 0);
     }
 
-    void CheckSystemFileAgeing(std::shared_ptr<FailingSourceFactory>& factory, const std::string& file)
+    void CheckSystemFileAgeing(std::shared_ptr<FailingSourceFactory>& factory, const std::string& file,
+        bool writerLocked = true)
     {
         constexpr char expectedSource[] = "system";
         char source[sizeof(expectedSource)] = {};
@@ -162,8 +176,10 @@ public:
         times[1] = times[0];
         ASSERT_EQ(utimensat(AT_FDCWD, file.c_str(), times, 0), 0);
         std::vector<TraceFileInfo> files {TraceFileInfo(file)};
-        EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(files, RETENTION_SECONDS, directory_), 0);
-        EXPECT_EQ(access(file.c_str(), F_OK), 0);
+        if (writerLocked) {
+            EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(files, RETENTION_SECONDS, directory_), 0);
+            EXPECT_EQ(access(file.c_str(), F_OK), 0);
+        }
         factory.reset();
         EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(files, RETENTION_SECONDS, directory_), 0);
         EXPECT_NE(access(file.c_str(), F_OK), 0);
@@ -211,9 +227,13 @@ HWTEST_F(TraceSourcePolicyTest, CacheFailurePromotionRetainsSystemSource, TestSi
     CacheFailureStrategy().Execute(factory, request);
     TraceDumpState::GetInstance().EndLoopDumpSelf();
     EXPECT_GT(GetFileSize(file), 0);
-    const auto promotedFile = RenameCacheFile(file);
+    EXPECT_TRUE(RenameCacheFile(file, TraceFileSource::USER).empty());
+    ExpectSource(file, "system");
+    factory.reset();
+    const auto promotedFile = RenameCacheFile(file, TraceFileSource::SYSTEM);
+    ASSERT_FALSE(promotedFile.empty());
     ASSERT_NE(promotedFile, file);
-    CheckSystemFileAgeing(factory, promotedFile);
+    CheckSystemFileAgeing(factory, promotedFile, false);
 }
 
 HWTEST_F(TraceSourcePolicyTest, ReplacementFileRetainsSystemSource, TestSize.Level1)
@@ -264,4 +284,74 @@ HWTEST_F(TraceSourcePolicyTest, WriterExitRetainsSystemSource, TestSize.Level1)
     EXPECT_NE(access(file.c_str(), F_OK), 0);
     EXPECT_TRUE(files.empty());
 }
+
+HWTEST_F(TraceSourcePolicyTest, FactoriesTagCreatedAndReplacementFiles, TestSize.Level1)
+{
+    int index = 0;
+    for (const auto source : {TraceFileSource::SYSTEM, TraceFileSource::USER}) {
+        for (const bool hm : {false, true}) {
+            const std::string file = directory_ + "/trace_created_" + std::to_string(index++);
+            std::shared_ptr<ITraceSourceFactory> factory;
+            if (hm) {
+                factory = std::make_shared<TraceSourceHMFactory>(file, source);
+            } else {
+                factory = std::make_shared<TraceSourceLinuxFactory>(file, source);
+            }
+            const std::string expected = source == TraceFileSource::SYSTEM ? "system" : "user";
+            ExpectSource(file, expected);
+            const std::string replacement = file + "_replacement";
+            ASSERT_TRUE(factory->UpdateTraceFile(replacement));
+            ExpectSource(replacement, expected);
+        }
+    }
+}
+
+HWTEST_F(TraceSourcePolicyTest, UserInitializationFailureRemainsExcludedFromSystemAgeing, TestSize.Level1)
+{
+    const std::string file = directory_ + "/trace_user_failed.sys";
+    auto factory = std::make_shared<FailingSourceFactory>(file, true);
+    const TraceDumpRequest request {.source = TraceFileSource::USER};
+    EXPECT_EQ(SnapshotTraceDumpStrategy().Execute(factory, request).code, TraceErrorCode::WRITE_TRACE_INFO_ERROR);
+    EXPECT_EQ(GetFileSize(file), 0);
+    ExpectSource(file, "user");
+    factory.reset();
+    timespec times[2] = {};
+    ASSERT_EQ(utimensat(AT_FDCWD, file.c_str(), times, 0), 0);
+    std::vector<TraceFileInfo> files {TraceFileInfo(file)};
+    EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(files, RETENTION_SECONDS, directory_), SUCCESS);
+    EXPECT_EQ(access(file.c_str(), F_OK), 0);
+    EXPECT_EQ(files.size(), 1u);
+}
+
+HWTEST_F(TraceSourcePolicyTest, RecordingWriteFailureRetainsUserSource, TestSize.Level1)
+{
+    const std::string file = directory_ + "/record_trace_failed.sys";
+    auto factory = std::make_shared<FailingSourceFactory>(file);
+    const TraceDumpRequest request {
+        .type = TraceDumpType::TRACE_RECORDING,
+        .source = TraceFileSource::USER
+    };
+    ASSERT_TRUE(TraceDumpState::GetInstance().StartLoopDump());
+    EXPECT_EQ(RecordFailureStrategy().Execute(factory, request).code, TraceErrorCode::WRITE_TRACE_INFO_ERROR);
+    TraceDumpState::GetInstance().EndLoopDumpSelf();
+    EXPECT_GT(GetFileSize(file), 0);
+    ExpectSource(file, "user");
+}
+
+
+HWTEST_F(TraceSourcePolicyTest, FailedOpenDoesNotRemoveExistingDirectory, TestSize.Level1)
+{
+    const std::string output = directory_ + "/existing";
+    ASSERT_EQ(mkdir(output.c_str(), 0700), 0);
+    for (const auto source : {TraceFileSource::SYSTEM, TraceFileSource::USER}) {
+        auto factory = std::make_shared<TraceSourceLinuxFactory>(output, source);
+        const TraceDumpRequest request {.source = source};
+        EXPECT_EQ(SnapshotTraceDumpStrategy().Execute(factory, request).code, TraceErrorCode::WRITE_TRACE_INFO_ERROR);
+        struct stat info {};
+        ASSERT_EQ(stat(output.c_str(), &info), 0);
+        EXPECT_TRUE(S_ISDIR(info.st_mode));
+    }
+    EXPECT_EQ(rmdir(output.c_str()), 0);
+}
+
 }

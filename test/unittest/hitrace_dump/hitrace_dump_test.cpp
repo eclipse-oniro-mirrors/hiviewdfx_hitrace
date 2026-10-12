@@ -1681,6 +1681,7 @@ public:
     {
         GetTraceFileNamesInDir(originalFiles_, TraceDumpType::TRACE_SNAPSHOT);
         GetTraceFileNamesInDir(originalFiles_, TraceDumpType::TRACE_CACHE);
+        GetTraceFileNamesInDir(originalFiles_, TraceDumpType::TRACE_RECORDING);
         char directory[] = "/data/local/tmp/trace_source_test_XXXXXX";
         ASSERT_NE(mkdtemp(directory), nullptr);
         directory_ = directory;
@@ -1692,6 +1693,7 @@ public:
         std::set<std::string> files;
         GetTraceFileNamesInDir(files, TraceDumpType::TRACE_SNAPSHOT);
         GetTraceFileNamesInDir(files, TraceDumpType::TRACE_CACHE);
+        GetTraceFileNamesInDir(files, TraceDumpType::TRACE_RECORDING);
         for (const auto& file : files) {
             if (originalFiles_.count(file) == 0) {
                 EXPECT_EQ(remove(file.c_str()), 0) << file;
@@ -1705,6 +1707,22 @@ public:
             EXPECT_TRUE(traversed);
             EXPECT_EQ(rmdir(directory_.c_str()), 0);
         }
+    }
+
+    void CheckNewFilesSource(const std::vector<std::string>& files, const std::string& expected)
+    {
+        size_t count = 0;
+        for (const auto& file : files) {
+            if (originalFiles_.count(file) != 0) {
+                continue;
+            }
+            char source[16] = {};
+            ASSERT_EQ(getxattr(file.c_str(), "user.trace_source", source, sizeof(source)),
+                static_cast<ssize_t>(expected.size())) << file;
+            EXPECT_STREQ(source, expected.c_str()) << file;
+            ++count;
+        }
+        EXPECT_GT(count, 0u);
     }
 
     void CheckNewSystemFilesAge(const std::vector<std::string>& files)
@@ -1740,7 +1758,7 @@ public:
         }
     }
 
-private:
+protected:
     std::set<std::string> originalFiles_;
     std::string directory_;
 };
@@ -1782,6 +1800,108 @@ HWTEST_F(TraceSourceXattrTest, CachedSystemTraceAgeing, TestSize.Level2)
     EXPECT_EQ(CacheTraceOff(), SUCCESS);
     EXPECT_EQ(CloseTrace(), SUCCESS);
     CheckNewSystemFilesAge(ret.outputFiles);
+}
+
+
+HWTEST_F(TraceSourceXattrTest, RecordingFilesUseUserSource, TestSize.Level2)
+{
+    for (const std::string path : {std::string(), directory_ + "/record.sys", std::string("/data/local/tmp/")}) {
+        ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1"), SUCCESS);
+        ASSERT_EQ(RecordTraceOn(path), SUCCESS);
+        sleep(2);
+        const auto ret = RecordTraceOff();
+        EXPECT_EQ(ret.errorCode, SUCCESS);
+        ASSERT_EQ(CloseTrace(), SUCCESS);
+        CheckNewFilesSource(ret.outputFiles, "user");
+        for (const auto& file : ret.outputFiles) {
+            if (file.find("/data/local/tmp/") == 0) {
+                EXPECT_EQ(remove(file.c_str()), 0);
+            }
+        }
+    }
+}
+
+HWTEST_F(TraceSourceXattrTest, RecordingSlicesUseUserSource, TestSize.Level2)
+{
+    ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1 fileSize:1"), SUCCESS);
+    ASSERT_EQ(RecordTraceOn("/data/local/tmp/"), SUCCESS);
+    sleep(3);
+    const auto ret = RecordTraceOff();
+    EXPECT_EQ(ret.errorCode, SUCCESS);
+    ASSERT_EQ(CloseTrace(), SUCCESS);
+    EXPECT_GE(ret.outputFiles.size(), 2u);
+    CheckNewFilesSource(ret.outputFiles, "user");
+    for (const auto& file : ret.outputFiles) {
+        if (originalFiles_.count(file) == 0) {
+            EXPECT_EQ(remove(file.c_str()), 0);
+        }
+    }
+}
+
+HWTEST_F(TraceSourceXattrTest, CacheConversionUsesExplicitUserPath, TestSize.Level2)
+{
+    for (const std::string path : {std::string("/data/log/hitrace"), std::string("/data/log/hitrace/"),
+        directory_ + "/requested.sys"}) {
+        ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
+        ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
+        sleep(3);
+        std::vector<TraceFileInfo> cacheFiles;
+        GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
+        ASSERT_FALSE(cacheFiles.empty());
+        std::vector<std::string> caches;
+        for (const auto& file : cacheFiles) {
+            caches.push_back(file.filename);
+        }
+        CheckNewFilesSource(caches, "system");
+        const auto ret = DumpTrace(0, 0, path);
+        EXPECT_EQ(ret.errorCode, SUCCESS);
+        EXPECT_EQ(CacheTraceOff(), SUCCESS);
+        EXPECT_EQ(CloseTrace(), SUCCESS);
+        CheckNewFilesSource(ret.outputFiles, "user");
+        size_t converted = 0;
+        for (const auto& file : caches) {
+            converted += access(file.c_str(), F_OK) != 0 ? 1 : 0;
+        }
+        EXPECT_GT(converted, 0u);
+    }
+}
+
+HWTEST_F(TraceSourceXattrTest, AsyncCacheConversionUsesSystemSource, TestSize.Level2)
+{
+    ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
+    ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
+    sleep(3);
+    auto completion = std::make_shared<std::promise<TraceRetInfo>>();
+    auto result = completion->get_future();
+    const auto ret = DumpTraceAsync(0, 0, INT64_MAX, [completion](TraceRetInfo info) {
+        completion->set_value(info);
+    });
+    EXPECT_EQ(ret.errorCode, SUCCESS);
+    ASSERT_EQ(result.wait_for(std::chrono::seconds(30)), std::future_status::ready);
+    const auto completed = result.get();
+    EXPECT_EQ(completed.errorCode, SUCCESS);
+    EXPECT_EQ(CacheTraceOff(), SUCCESS);
+    EXPECT_EQ(CloseTrace(), SUCCESS);
+    CheckNewSystemFilesAge(completed.outputFiles);
+}
+
+HWTEST_F(TraceSourceXattrTest, ReusingSnapshotPreservesConvertedUserSource, TestSize.Level2)
+{
+    ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
+    ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
+    sleep(3);
+    const auto userRet = DumpTrace(0, 0, "/data/log/hitrace/");
+    ASSERT_EQ(userRet.errorCode, SUCCESS);
+    CheckNewFilesSource(userRet.outputFiles, "user");
+    const auto systemRet = DumpTrace();
+    EXPECT_EQ(systemRet.errorCode, SUCCESS);
+    for (const auto& file : userRet.outputFiles) {
+        EXPECT_NE(std::find(systemRet.outputFiles.begin(), systemRet.outputFiles.end(), file),
+            systemRet.outputFiles.end());
+    }
+    CheckNewFilesSource(userRet.outputFiles, "user");
+    EXPECT_EQ(CacheTraceOff(), SUCCESS);
+    EXPECT_EQ(CloseTrace(), SUCCESS);
 }
 
 /**

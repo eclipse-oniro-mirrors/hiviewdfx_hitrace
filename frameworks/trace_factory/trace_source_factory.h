@@ -31,7 +31,8 @@ namespace Hitrace {
  */
 class ITraceSourceFactory {
 public:
-    explicit ITraceSourceFactory(const std::string& traceFilePath);
+    explicit ITraceSourceFactory(const std::string& traceFilePath,
+        TraceFileSource source = TraceFileSource::SYSTEM);
     virtual ~ITraceSourceFactory() = default;
     virtual std::unique_ptr<ITraceFileHdrContent> GetTraceFileHeader() = 0;
     virtual std::unique_ptr<TraceBaseInfoContent> GetTraceBaseInfo() = 0;
@@ -45,17 +46,18 @@ public:
     virtual std::unique_ptr<ITraceCpuRawWrite> GetTraceCpuRawWrite(const uint64_t taskId) = 0;
     virtual const std::string& GetTraceFilePath();
     virtual bool UpdateTraceFile(const std::string& traceFilePath);
-    bool PrepareSystemTrace();
-    bool SetTraceSource(TraceFileSource source);
+    bool PrepareTraceFile(TraceFileSource source);
 protected:
     SmartFd traceFileFd_;
     std::string traceFilePath_;
+    TraceFileSource source_;
 };
 
 class TraceSourceLinuxFactory : public ITraceSourceFactory {
 public:
     TraceSourceLinuxFactory() = delete;
-    explicit TraceSourceLinuxFactory(const std::string& traceFilePath);
+    explicit TraceSourceLinuxFactory(const std::string& traceFilePath,
+        TraceFileSource source = TraceFileSource::SYSTEM);
     ~TraceSourceLinuxFactory() override = default;
 
     std::unique_ptr<ITraceFileHdrContent> GetTraceFileHeader() override;
@@ -73,7 +75,8 @@ public:
 class TraceSourceHMFactory : public ITraceSourceFactory {
 public:
     TraceSourceHMFactory() = delete;
-    explicit TraceSourceHMFactory(const std::string& traceFilePath);
+    explicit TraceSourceHMFactory(const std::string& traceFilePath,
+        TraceFileSource source = TraceFileSource::SYSTEM);
     ~TraceSourceHMFactory() override = default;
 
     std::unique_ptr<ITraceFileHdrContent> GetTraceFileHeader() override;

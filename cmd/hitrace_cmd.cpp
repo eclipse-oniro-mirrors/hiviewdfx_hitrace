@@ -1700,6 +1700,42 @@ static void DumpCompressedTrace(int traceFd, int outFd)
     }
 }
 
+static bool PrepareTraceOutput(OHOS::HiviewDFX::SmartFd& outFileFd)
+{
+    if (g_traceArgs.output.size() > 0) {
+        std::string outSpecPath = CanonicalizeSpecPath(g_traceArgs.output.c_str());
+        if (outSpecPath.empty() || !IsWritable(outSpecPath)) {
+            ConsoleLog("error: output path is illegal: " + g_traceArgs.output);
+            g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
+            g_traceSysEventParams.errorMessage = "error: output path is illegal: " + g_traceArgs.output;
+            return false;
+        }
+        outFileFd = OHOS::HiviewDFX::SmartFd(
+            open(outSpecPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
+        if (!outFileFd) {
+            ConsoleLog("error: opening " + g_traceArgs.output + ", errno: " + std::to_string(errno));
+            g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
+            g_traceSysEventParams.errorMessage = "error: opening " + g_traceArgs.output + ", errno: " +
+                std::to_string(errno);
+            return false;
+        }
+    }
+    int outFd = outFileFd ? outFileFd.GetFd() : STDOUT_FILENO;
+    struct stat outputStat {};
+    if (fstat(outFd, &outputStat) != 0 ||
+        (S_ISREG(outputStat.st_mode) && !SetTraceFileSource(outFd, TraceFileSource::USER))) {
+        ConsoleLog("error: setting trace output source failed, errno: " + std::to_string(errno));
+        g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
+        g_traceSysEventParams.errorMessage = "error: setting trace output source failed";
+        if (outFileFd) {
+            outFileFd.Reset();
+            (void)remove(g_traceArgs.output.c_str());
+        }
+        return false;
+    }
+    return true;
+}
+
 static void DumpKernelTraceToOutput()
 {
     std::string tracePath = GetTraceRootPath() + TRACE_NODE;
@@ -1713,23 +1749,8 @@ static void DumpKernelTraceToOutput()
         return;
     }
     OHOS::HiviewDFX::SmartFd outFileFd;
-    if (g_traceArgs.output.size() > 0) {
-        std::string outSpecPath = CanonicalizeSpecPath(g_traceArgs.output.c_str());
-        if (outSpecPath.empty() || !IsWritable(outSpecPath)) {
-            ConsoleLog("error: output path is illegal: " + g_traceArgs.output);
-            g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
-            g_traceSysEventParams.errorMessage = "error: output path is illegal: " + g_traceArgs.output;
-            return;
-        }
-        outFileFd = OHOS::HiviewDFX::SmartFd(
-            open(outSpecPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
-        if (!outFileFd) {
-            ConsoleLog("error: opening " + g_traceArgs.output + ", errno: " + std::to_string(errno));
-            g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
-            g_traceSysEventParams.errorMessage = "error: opening " + g_traceArgs.output + ", errno: " +
-                std::to_string(errno);
-            return;
-        }
+    if (!PrepareTraceOutput(outFileFd)) {
+        return;
     }
     int outFd = outFileFd ? outFileFd.GetFd() : STDOUT_FILENO;
     ssize_t bytesWritten;

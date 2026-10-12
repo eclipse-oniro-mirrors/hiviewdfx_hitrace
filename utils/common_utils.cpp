@@ -16,6 +16,8 @@
 #include "common_utils.h"
 
 #include <cinttypes>
+#include <cerrno>
+#include <cstring>
 #include <unistd.h>
 #include <csignal>
 #include <cstdio>
@@ -25,6 +27,7 @@
 #include <sys/time.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 
 #include "common_define.h"
 #include "hilog/log.h"
@@ -49,6 +52,20 @@ constexpr const char CPUFREQ_AFTERFIX[] = "/cpufreq/scaling_cur_freq";
 constexpr int DECIMAL_SCALE = 10;
 constexpr int BUFFER_LEN = 32;
 constexpr int EXPECT_NUM = 2;
+}
+
+bool SetTraceFileSource(int fd, TraceFileSource source)
+{
+    if (source != TraceFileSource::SYSTEM && source != TraceFileSource::USER) {
+        errno = EINVAL;
+        return false;
+    }
+    const char* value = source == TraceFileSource::SYSTEM ? "system" : "user";
+    if (TEMP_FAILURE_RETRY(fsetxattr(fd, "user.trace_source", value, strlen(value), 0)) != 0) {
+        HILOG_ERROR(LOG_CORE, "Set trace source xattr failed, errno %{public}d", errno);
+        return false;
+    }
+    return true;
 }
 
 std::string CanonicalizeSpecPath(const char* src)

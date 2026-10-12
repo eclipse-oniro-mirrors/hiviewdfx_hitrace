@@ -54,7 +54,9 @@ bool IsGenerateNewFile(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
     }
     count++;
     auto newFileName = GenerateTraceFileName(traceType);
-    traceSourceFactory->UpdateTraceFile(newFileName);
+    if (!traceSourceFactory->UpdateTraceFile(newFileName)) {
+        return false;
+    }
     HILOG_INFO(LOG_CORE, "IsGenerateNewFile: update tracesource filename : %{public}s", newFileName.c_str());
     return true;
 }
@@ -101,9 +103,8 @@ bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceF
     const TraceDumpRequest& request, TraceDumpRet& ret, int& newFileCount)
 {
     // Source identifies the request even if initialization or writing later fails.
-    if (request.type != TraceDumpType::TRACE_ASYNC_READ && request.source == TraceFileSource::SYSTEM &&
-        !traceSourceFactory->PrepareSystemTrace()) {
-        RemoveFile(CanonicalizeSpecPath(traceSourceFactory->GetTraceFilePath().c_str()));
+    if (request.type != TraceDumpType::TRACE_ASYNC_READ &&
+        !traceSourceFactory->PrepareTraceFile(request.source)) {
         ret = {TraceErrorCode::WRITE_TRACE_INFO_ERROR, "", 0, 0, 0};
         return false;
     }
@@ -122,12 +123,6 @@ bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceF
     }
 
     ExecutePostProcessing(traceContentPtr);
-    if (ret.code == TraceErrorCode::SUCCESS && request.source == TraceFileSource::USER &&
-        !traceSourceFactory->SetTraceSource(request.source)) {
-        RemoveFile(CanonicalizeSpecPath(traceSourceFactory->GetTraceFilePath().c_str()));
-        ret.code = TraceErrorCode::WRITE_TRACE_INFO_ERROR;
-        return false;
-    }
     return true;
 }
 

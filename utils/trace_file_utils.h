@@ -62,7 +62,7 @@ void ClearCacheTraceFileBySize(std::vector<TraceFileInfo>& cacheFileVec, const u
 off_t GetFileSize(const std::string& filePath);
 uint64_t GetCurUnixTimeMs();
 void RefreshTraceVec(std::vector<TraceFileInfo>& traceVec, const TraceDumpType traceType);
-std::string RenameCacheFile(const std::string& cacheFile);
+std::string RenameCacheFile(const std::string& cacheFile, TraceFileSource source);
 bool SetFileInfo(const bool isFileExist, const std::string outPath, const TimestampRange& timestampRange,
     TraceFileInfo& traceFileInfo, const std::string& outputPath = "");
 

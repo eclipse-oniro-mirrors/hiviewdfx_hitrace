@@ -19,10 +19,14 @@
 #include <cinttypes>
 #include <string>
 
+#include "hitrace_define.h"
+
 namespace OHOS {
 namespace HiviewDFX {
 namespace Hitrace {
 std::string CanonicalizeSpecPath(const char* src);
+
+bool SetTraceFileSource(int fd, TraceFileSource source);
 
 bool MarkClockSync(const std::string& traceRootPath);
 

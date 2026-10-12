@@ -18,13 +18,12 @@
 #include <fcntl.h>
 #include <hilog/log.h>
 #include <cerrno>
-#include <cstring>
 #include <string>
 #include <sys/file.h>
-#include <sys/xattr.h>
 #include <unistd.h>
 
 #include "common_utils.h"
+#include "trace_file_utils.h"
 
 namespace OHOS {
 namespace HiviewDFX {
@@ -56,7 +55,8 @@ bool UpdateFileFd(const std::string& traceFile, SmartFd& fd)
 }
 }
 
-ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath) : traceFilePath_(traceFilePath)
+ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath, TraceFileSource source)
+    : traceFilePath_(traceFilePath), source_(source)
 {
     if (traceFilePath.empty()) {
         return;
@@ -66,6 +66,10 @@ ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath) : tra
     traceFileFd_ = SmartFd(open(path.c_str(), O_CREAT | O_WRONLY | O_TRUNC | O_UNCACHE | O_NOFOLLOW, mode));
     if (!traceFileFd_) {
         HILOG_ERROR(LOG_CORE, "TraceSourceFactory: open %{public}s failed.", traceFilePath.c_str());
+        return;
+    }
+    if (!PrepareTraceFile(source_)) {
+        HILOG_ERROR(LOG_CORE, "TraceSourceFactory: prepare %{public}s failed.", traceFilePath.c_str());
     }
 }
 
@@ -74,30 +78,22 @@ const std::string& ITraceSourceFactory::GetTraceFilePath()
     return traceFilePath_;
 }
 
-bool ITraceSourceFactory::PrepareSystemTrace()
+bool ITraceSourceFactory::PrepareTraceFile(TraceFileSource source)
 {
-    if (TEMP_FAILURE_RETRY(flock(traceFileFd_.GetFd(), LOCK_EX | LOCK_NB)) != 0) {
-        HILOG_ERROR(LOG_CORE, "Lock system trace file failed, errno %{public}d", errno);
+    if (!traceFileFd_) {
         return false;
     }
-    if (!SetTraceSource(TraceFileSource::SYSTEM)) {
+    const int lockResult = TEMP_FAILURE_RETRY(flock(traceFileFd_.GetFd(), LOCK_EX | LOCK_NB));
+    if (lockResult != 0) {
+        HILOG_ERROR(LOG_CORE, "Lock trace file failed, errno %{public}d", errno);
+    }
+    if (lockResult != 0 || !SetTraceFileSource(traceFileFd_.GetFd(), source)) {
         traceFileFd_.Reset();
+        RemoveFile(CanonicalizeSpecPath(traceFilePath_.c_str()));
         return false;
     }
     // Keep the file locked until the writer closes or replaces its fd.
-    return true;
-}
-
-bool ITraceSourceFactory::SetTraceSource(TraceFileSource source)
-{
-    if (source == TraceFileSource::UNKNOWN) {
-        return true;
-    }
-    const char* value = source == TraceFileSource::SYSTEM ? "system" : "user";
-    if (TEMP_FAILURE_RETRY(fsetxattr(traceFileFd_.GetFd(), "user.trace_source", value, strlen(value), 0)) != 0) {
-        HILOG_ERROR(LOG_CORE, "Set trace source xattr failed, errno %{public}d", errno);
-        return false;
-    }
+    source_ = source;
     return true;
 }
 
@@ -107,11 +103,11 @@ bool ITraceSourceFactory::UpdateTraceFile(const std::string& traceFilePath)
         return false;
     }
     traceFilePath_ = traceFilePath;
-    return true;
+    return PrepareTraceFile(source_);
 }
 
-TraceSourceLinuxFactory::TraceSourceLinuxFactory(const std::string& traceFilePath)
-    : ITraceSourceFactory(traceFilePath) {}
+TraceSourceLinuxFactory::TraceSourceLinuxFactory(const std::string& traceFilePath, TraceFileSource source)
+    : ITraceSourceFactory(traceFilePath, source) {}
 
 std::unique_ptr<ITraceFileHdrContent> TraceSourceLinuxFactory::GetTraceFileHeader()
 {
@@ -163,7 +159,8 @@ std::unique_ptr<ITraceCpuRawWrite> TraceSourceLinuxFactory::GetTraceCpuRawWrite(
     return std::make_unique<TraceCpuRawWriteLinux>(traceFileFd_.GetFd(), traceFilePath_, taskId);
 }
 
-TraceSourceHMFactory::TraceSourceHMFactory(const std::string& traceFilePath) : ITraceSourceFactory(traceFilePath) {}
+TraceSourceHMFactory::TraceSourceHMFactory(const std::string& traceFilePath, TraceFileSource source)
+    : ITraceSourceFactory(traceFilePath, source) {}
 
 std::unique_ptr<ITraceFileHdrContent> TraceSourceHMFactory::GetTraceFileHeader()
 {

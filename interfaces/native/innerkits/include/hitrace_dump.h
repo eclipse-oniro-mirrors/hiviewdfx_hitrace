@@ -68,8 +68,8 @@ TraceErrorCode OpenTrace(const std::vector<std::string>& tagGroups);
 /**
  * Reading trace data once from ftrace ringbuffer in the kernel.
  * Using child processes to process trace tasks.
- * Files created by system requests are marked before writing, including files left after write failures.
- * System writers hold a file lock until writing ends; source tags do not indicate successful completion.
+ * New files are marked system or user before writing, including files left after write failures.
+ * Writers hold a file lock until writing ends; source tags do not indicate successful completion.
  * maxDuration: the maximum time(s) allowed for the trace task.
  * ---- If maxDuration is 0, means that is no limit for the trace task.
  * ---- If maxDuration is less than 0, it is illegal input parameter.
@@ -78,6 +78,7 @@ TraceErrorCode OpenTrace(const std::vector<std::string>& tagGroups);
  * outputPath: empty uses the default trace directory. Explicit /data/log/hitrace (with or without
  * a trailing slash) generates a filename there; /data/local/tmp paths may specify a file or directory.
  * A nonempty outputPath marks newly generated files as user traces.
+ * Cache files converted to snapshots take the source of this request; existing snapshots keep their source.
  * return TraceErrorCode::SUCCESS if any trace is captured between the designated interval
  * return TraceErrorCode::OUT_OF_TIME otherwise.
 */
@@ -116,6 +117,7 @@ TraceRetInfo DumpTraceAsync(uint32_t maxDuration = 0, uint64_t utTraceEndTime = 
 /**
  * Enable sub threads to periodically drop disk trace data.
  * End the periodic disk drop task until the next call to RecordTraceOff().
+ * Every recording file is marked user before writing, including default-path files and rotated slices.
 */
 TraceErrorCode RecordTraceOn(const std::string& outputPath = "");
 
@@ -126,6 +128,7 @@ TraceRetInfo RecordTraceOff();
 
 /**
  * Enable sub threads to periodically dump cache data
+ * Cache files are marked system; conversion to snapshots applies the dump request's source.
  * End dumping with CacheTraceOff()
  * CacheTraceOn() function call during the caching phase will return corresponding cache files.
 */

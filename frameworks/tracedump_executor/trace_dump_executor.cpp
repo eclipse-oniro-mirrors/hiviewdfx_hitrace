@@ -433,11 +433,12 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
     if (param.fileSize != 0) {
         fileSizeThreshold = param.fileSize * BYTE_PER_KB;
     }
+    const auto source = param.type == TraceDumpType::TRACE_CACHE ? TraceFileSource::SYSTEM : TraceFileSource::USER;
     std::shared_ptr<ITraceSourceFactory> traceSourceFactory = nullptr;
     if (IsHmKernel()) {
-        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, source);
     } else {
-        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, source);
     }
 
     std::lock_guard<std::mutex> lck(traceFileMutex_);
@@ -448,7 +449,7 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         .traceStartTime = param.traceStartTime,
         .traceEndTime = param.traceEndTime,
         .cacheSliceDuration = param.cacheSliceDuration,
-        .source = param.type == TraceDumpType::TRACE_CACHE ? TraceFileSource::SYSTEM : TraceFileSource::UNKNOWN
+        .source = source
     };
     auto dumpRet = ExecuteDumpTrace(traceSourceFactory, request);
     HILOG_INFO(LOG_CORE, "DoDumpTraceLoop: ExecuteDumpTrace done, errorcode: %{public}d, tracefile: %{public}s",
@@ -467,6 +468,7 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         HILOG_ERROR(LOG_CORE, "DoDumpTraceLoop : Trace file (%{public}s) not found.", traceFile.c_str());
         return false;
     }
+    traceSourceFactory.reset();
     return true;
 }
 
@@ -491,9 +493,9 @@ TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, cons
         return { TraceErrorCode::TRACE_NOT_SUPPORTED, "", 0, 0, 0 };
     }
     if (IsHmKernel()) {
-        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, source);
     } else {
-        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, source);
     }
 
     TraceDumpRequest request = {
