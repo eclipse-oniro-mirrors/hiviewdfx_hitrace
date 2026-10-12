@@ -16,9 +16,11 @@
 #include <gtest/gtest.h>
 #include <cstring>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 #include "trace_file_utils.h"
 
 using namespace testing::ext;
@@ -160,6 +162,165 @@ HWTEST_F(TraceFileUtilsTest, RejectSnapshotOutsideDefaultDirectory, TestSize.Lev
         "/data/log/hitrace/custom.sys", "/data/log", "/system/bin"}) {
         EXPECT_TRUE(Hitrace::GenerateTraceFileName(Hitrace::TRACE_SNAPSHOT, path).empty()) << path;
     }
+}
+class CacheTraceFileSizeTest : public testing::Test {
+protected:
+    static constexpr int64_t FILE_SIZE = 10;
+
+    void SetUp() override
+    {
+        char directory[] = "/data/local/tmp/hitrace_cache_size_XXXXXX";
+        ASSERT_NE(mkdtemp(directory), nullptr);
+        directory_ = directory;
+    }
+
+    void TearDown() override
+    {
+        for (auto it = createdFiles_.rbegin(); it != createdFiles_.rend(); ++it) {
+            (void)remove(it->c_str());
+        }
+        if (!directory_.empty()) {
+            (void)rmdir(directory_.c_str());
+        }
+    }
+
+    std::string Path(const std::string& name) const
+    {
+        return directory_ + "/" + name;
+    }
+
+    bool AddCacheFile(const std::string& name)
+    {
+        const auto path = Path(name);
+        FILE* file = fopen(path.c_str(), "w");
+        if (file == nullptr) {
+            return false;
+        }
+        createdFiles_.push_back(path);
+        const bool written = fputs("0123456789", file) >= 0;
+        const bool closed = fclose(file) == 0;
+        if (!written || !closed) {
+            return false;
+        }
+        Hitrace::TraceFileInfo info;
+        info.filename = path;
+        info.fileSize = FILE_SIZE;
+        cacheFiles_.push_back(info);
+        return true;
+    }
+
+    bool AddCacheFiles(const std::string& names)
+    {
+        for (char name : names) {
+            if (!AddCacheFile(std::string(1, name))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void ExpectFiles(const std::string& names)
+    {
+        std::vector<std::string> expected;
+        for (char name : names) {
+            expected.push_back(Path(std::string(1, name)));
+        }
+        std::vector<std::string> actual;
+        for (const auto& file : cacheFiles_) {
+            actual.push_back(file.filename);
+        }
+        EXPECT_EQ(actual, expected);
+        for (char name = 'A'; name <= 'E'; ++name) {
+            EXPECT_EQ(access(Path(std::string(1, name)).c_str(), F_OK) == 0,
+                names.find(name) != std::string::npos) << name;
+        }
+    }
+
+    std::string directory_;
+    std::vector<std::string> createdFiles_;
+    std::vector<Hitrace::TraceFileInfo> cacheFiles_;
+};
+
+HWTEST_F(CacheTraceFileSizeTest, AtLimitRetainsFiles, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFiles("ABCD"));
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    ExpectFiles("ABCD");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, MissingOldestDoesNotEvictValidFiles, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFiles("ABCD"));
+    ASSERT_EQ(remove(Path("A").c_str()), 0);
+    ASSERT_TRUE(AddCacheFile("E"));
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    ExpectFiles("BCDE");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, MissingNewestDoesNotEvictOldest, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFiles("ABCDE"));
+    ASSERT_EQ(remove(Path("E").c_str()), 0);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    ExpectFiles("ABCD");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, MissingEntriesRemovedBelowLimit, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFiles("ABC"));
+    ASSERT_EQ(remove(Path("A").c_str()), 0);
+    ASSERT_EQ(remove(Path("C").c_str()), 0);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    ExpectFiles("B");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, PromotedFileLeavesCacheBudget, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFile("cache_trace_A"));
+    ASSERT_TRUE(AddCacheFiles("BCD"));
+    const auto promoted = Hitrace::RenameCacheFile(Path("cache_trace_A"));
+    createdFiles_.push_back(promoted);
+    ASSERT_EQ(promoted, Path("trace_A"));
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 3 * FILE_SIZE);
+    ExpectFiles("BCD");
+    EXPECT_EQ(access(promoted.c_str(), F_OK), 0);
+}
+
+HWTEST_F(CacheTraceFileSizeTest, OverLimitEvictsOldestOnly, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFiles("ABCD"));
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 2 * FILE_SIZE);
+    ExpectFiles("CD");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, FailedDeletionRemainsTrackedForRetry, TestSize.Level1)
+{
+    // A nonempty directory makes remove fail even when the test runs as root.
+    ASSERT_EQ(mkdir(Path("A").c_str(), 0700), 0);
+    createdFiles_.push_back(Path("A"));
+    Hitrace::TraceFileInfo blocked;
+    blocked.filename = Path("A");
+    blocked.fileSize = FILE_SIZE;
+    cacheFiles_.push_back(blocked);
+    ASSERT_TRUE(AddCacheFile("A/child"));
+    cacheFiles_.pop_back();
+    ASSERT_TRUE(AddCacheFiles("BC"));
+
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 2 * FILE_SIZE);
+    ExpectFiles("AC");
+
+    ASSERT_EQ(remove(Path("A/child").c_str()), 0);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, FILE_SIZE);
+    ExpectFiles("C");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, ZeroLimitAndEmptyCache, TestSize.Level1)
+{
+    ASSERT_TRUE(AddCacheFiles("AB"));
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 0);
+    ExpectFiles("");
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 0);
+    ExpectFiles("");
 }
 } // namespace HiviewDFX
 } // namespace OHOS

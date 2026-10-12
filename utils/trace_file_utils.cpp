@@ -16,6 +16,7 @@
 #include "trace_file_utils.h"
 
 #include <cinttypes>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -440,26 +441,28 @@ void ClearCacheTraceFileBySize(std::vector<TraceFileInfo>& cacheFileVec, const u
         return;
     }
     int64_t totalCacheFileSize = 0;
-    for (size_t i = 0; i < cacheFileVec.size(); ++i) {
-        totalCacheFileSize += cacheFileVec[i].fileSize;
-    }
-    while (totalCacheFileSize > static_cast<int64_t>(fileSizeLimit)) {
-        if (cacheFileVec.empty()) {
-            HILOG_INFO(LOG_CORE, "ClearCacheTraceFileBySize: cacheFileVec is empty.");
-            return;
+    // Reconcile every entry before eviction: a missing file may follow a valid older file.
+    for (auto it = cacheFileVec.begin(); it != cacheFileVec.end();) {
+        if (access(it->filename.c_str(), F_OK) != 0 && errno == ENOENT) {
+            it = cacheFileVec.erase(it);
+            continue;
         }
-        auto it = cacheFileVec.begin();
+        totalCacheFileSize += it->fileSize;
+        ++it;
+    }
+    auto it = cacheFileVec.begin();
+    while (it != cacheFileVec.end() && totalCacheFileSize > static_cast<int64_t>(fileSizeLimit)) {
         HILOG_INFO(LOG_CORE, "filename:%{public}s, fileSizeLimit:(%{public}" PRId64
             "), totalCacheFileSize:(%{public}" PRId64 "), fileSize:(%{public}" PRId64 ").",
             (*it).filename.c_str(), fileSizeLimit, totalCacheFileSize, (*it).fileSize);
-        if (remove((*it).filename.c_str()) == 0) {
-            totalCacheFileSize = totalCacheFileSize - (*it).fileSize;
-            HILOG_INFO(LOG_CORE, "ClearCacheTraceFileBySize: delete first %{public}s success.", (*it).filename.c_str());
-        } else {
+        if (remove(it->filename.c_str()) != 0 && errno != ENOENT) {
             HILOG_ERROR(LOG_CORE, "ClearCacheTraceFileBySize: delete first: %{public}s failed, errno: %{public}d",
-                (*it).filename.c_str(), errno);
+                it->filename.c_str(), errno);
+            ++it;
+            continue;
         }
-        cacheFileVec.erase(it);
+        totalCacheFileSize -= it->fileSize;
+        it = cacheFileVec.erase(it);
     }
 }
 
