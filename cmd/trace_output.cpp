@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #include "common_utils.h"
+#include "hitrace_define.h"
 #include "trace_file_utils.h"
 
 namespace OHOS::HiviewDFX::Hitrace {

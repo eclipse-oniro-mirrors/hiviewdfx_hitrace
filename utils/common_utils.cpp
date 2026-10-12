@@ -31,6 +31,7 @@
 
 #include "common_define.h"
 #include "hilog/log.h"
+#include "hitrace_define.h"
 #include "parameters.h"
 #include "securec.h"
 #include "smart_fd.h"

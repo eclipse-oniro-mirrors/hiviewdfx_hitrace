@@ -18,12 +18,14 @@
 
 #include <cinttypes>
 #include <string>
-
-#include "hitrace_define.h"
+#include <sys/types.h>
+#include <vector>
 
 namespace OHOS {
 namespace HiviewDFX {
 namespace Hitrace {
+enum class TraceFileSource : uint8_t;
+
 std::string CanonicalizeSpecPath(const char* src);
 
 bool SetTraceFileSource(int fd, TraceFileSource source);

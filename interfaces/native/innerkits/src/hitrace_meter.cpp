@@ -38,6 +38,7 @@
 
 #include "common_define.h"
 #include "common_utils.h"
+#include "hitrace_define.h"
 #include "securec.h"
 #include "hilog/log.h"
 #include "param/sys_param.h"
