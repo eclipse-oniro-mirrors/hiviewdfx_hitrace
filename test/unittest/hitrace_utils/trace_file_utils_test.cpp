@@ -163,9 +163,10 @@ HWTEST_F(TraceFileUtilsTest, RejectSnapshotOutsideDefaultDirectory, TestSize.Lev
         EXPECT_TRUE(Hitrace::GenerateTraceFileName(Hitrace::TRACE_SNAPSHOT, path).empty()) << path;
     }
 }
+
 class CacheTraceFileSizeTest : public testing::Test {
 protected:
-    static constexpr int64_t FILE_SIZE = 10;
+    static constexpr int64_t fileSize = 10;
 
     void SetUp() override
     {
@@ -204,7 +205,7 @@ protected:
         }
         Hitrace::TraceFileInfo info;
         info.filename = path;
-        info.fileSize = FILE_SIZE;
+        info.fileSize = fileSize;
         cacheFiles_.push_back(info);
         return true;
     }
@@ -244,7 +245,7 @@ protected:
 HWTEST_F(CacheTraceFileSizeTest, AtLimitRetainsFiles, TestSize.Level1)
 {
     ASSERT_TRUE(AddCacheFiles("ABCD"));
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * fileSize);
     ExpectFiles("ABCD");
 }
 
@@ -253,7 +254,7 @@ HWTEST_F(CacheTraceFileSizeTest, MissingOldestDoesNotEvictValidFiles, TestSize.L
     ASSERT_TRUE(AddCacheFiles("ABCD"));
     ASSERT_EQ(remove(Path("A").c_str()), 0);
     ASSERT_TRUE(AddCacheFile("E"));
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * fileSize);
     ExpectFiles("BCDE");
 }
 
@@ -261,7 +262,7 @@ HWTEST_F(CacheTraceFileSizeTest, MissingNewestDoesNotEvictOldest, TestSize.Level
 {
     ASSERT_TRUE(AddCacheFiles("ABCDE"));
     ASSERT_EQ(remove(Path("E").c_str()), 0);
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * fileSize);
     ExpectFiles("ABCD");
 }
 
@@ -270,7 +271,7 @@ HWTEST_F(CacheTraceFileSizeTest, MissingEntriesRemovedBelowLimit, TestSize.Level
     ASSERT_TRUE(AddCacheFiles("ABC"));
     ASSERT_EQ(remove(Path("A").c_str()), 0);
     ASSERT_EQ(remove(Path("C").c_str()), 0);
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 4 * fileSize);
     ExpectFiles("B");
 }
 
@@ -281,7 +282,7 @@ HWTEST_F(CacheTraceFileSizeTest, PromotedFileLeavesCacheBudget, TestSize.Level1)
     const auto promoted = Hitrace::RenameCacheFile(Path("cache_trace_A"));
     createdFiles_.push_back(promoted);
     ASSERT_EQ(promoted, Path("trace_A"));
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 3 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 3 * fileSize);
     ExpectFiles("BCD");
     EXPECT_EQ(access(promoted.c_str(), F_OK), 0);
 }
@@ -289,7 +290,7 @@ HWTEST_F(CacheTraceFileSizeTest, PromotedFileLeavesCacheBudget, TestSize.Level1)
 HWTEST_F(CacheTraceFileSizeTest, OverLimitEvictsOldestOnly, TestSize.Level1)
 {
     ASSERT_TRUE(AddCacheFiles("ABCD"));
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 2 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 2 * fileSize);
     ExpectFiles("CD");
 }
 
@@ -300,17 +301,17 @@ HWTEST_F(CacheTraceFileSizeTest, FailedDeletionRemainsTrackedForRetry, TestSize.
     createdFiles_.push_back(Path("A"));
     Hitrace::TraceFileInfo blocked;
     blocked.filename = Path("A");
-    blocked.fileSize = FILE_SIZE;
+    blocked.fileSize = fileSize;
     cacheFiles_.push_back(blocked);
     ASSERT_TRUE(AddCacheFile("A/child"));
     cacheFiles_.pop_back();
     ASSERT_TRUE(AddCacheFiles("BC"));
 
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 2 * FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 2 * fileSize);
     ExpectFiles("AC");
 
     ASSERT_EQ(remove(Path("A/child").c_str()), 0);
-    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, FILE_SIZE);
+    Hitrace::ClearCacheTraceFileBySize(cacheFiles_, fileSize);
     ExpectFiles("C");
 }
 
