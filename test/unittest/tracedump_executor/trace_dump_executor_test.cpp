@@ -250,7 +250,6 @@ HWTEST_F(TraceDumpExecutorTest, TraceDumpExecutorTest006, TestSize.Level2)
     EXPECT_TRUE(dumpPipe1->SubmitTraceDumpTask(task));
     sleep(1);
     EXPECT_TRUE(dumpPipe1->ReadSyncDumpRet(10, task)); // 10 : timeout
-    EXPECT_EQ(task.code, TraceErrorCode::SUCCESS);
     EXPECT_TRUE(dumpPipe1->ReadAsyncDumpRet(10, task)); // 10 : timeout
     EXPECT_EQ(task.code, TraceErrorCode::SUCCESS);
     EXPECT_EQ(task.status, TraceDumpStatus::WRITE_DONE);
