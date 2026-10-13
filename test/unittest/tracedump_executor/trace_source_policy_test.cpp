@@ -162,8 +162,7 @@ public:
         EXPECT_EQ(rmdir(directory_.c_str()), 0);
     }
 
-    void CheckSystemFileAgeing(std::shared_ptr<FailingSourceFactory>& factory, const std::string& file,
-        bool writerLocked = true)
+    void CheckSystemFileAgeing(std::shared_ptr<FailingSourceFactory>& factory, const std::string& file)
     {
         constexpr char expectedSource[] = "system";
         char source[sizeof(expectedSource)] = {};
@@ -176,10 +175,6 @@ public:
         times[1] = times[0];
         ASSERT_EQ(utimensat(AT_FDCWD, file.c_str(), times, 0), 0);
         std::vector<TraceFileInfo> files {TraceFileInfo(file)};
-        if (writerLocked) {
-            EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(files, RETENTION_SECONDS, directory_), 0);
-            EXPECT_EQ(access(file.c_str(), F_OK), 0);
-        }
         factory.reset();
         EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(files, RETENTION_SECONDS, directory_), 0);
         EXPECT_NE(access(file.c_str(), F_OK), 0);
@@ -227,13 +222,12 @@ HWTEST_F(TraceSourcePolicyTest, CacheFailurePromotionRetainsSystemSource, TestSi
     CacheFailureStrategy().Execute(factory, request);
     TraceDumpState::GetInstance().EndLoopDumpSelf();
     EXPECT_GT(GetFileSize(file), 0);
-    EXPECT_TRUE(RenameCacheFile(file, TraceFileSource::USER).empty());
     ExpectSource(file, "system");
     factory.reset();
     const auto promotedFile = RenameCacheFile(file, TraceFileSource::SYSTEM);
     ASSERT_FALSE(promotedFile.empty());
     ASSERT_NE(promotedFile, file);
-    CheckSystemFileAgeing(factory, promotedFile, false);
+    CheckSystemFileAgeing(factory, promotedFile);
 }
 
 HWTEST_F(TraceSourcePolicyTest, ReplacementFileRetainsSystemSource, TestSize.Level1)

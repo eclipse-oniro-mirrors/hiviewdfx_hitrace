@@ -19,7 +19,6 @@
 #include <hilog/log.h>
 #include <cerrno>
 #include <string>
-#include <sys/file.h>
 #include <unistd.h>
 
 #include "common_utils.h"
@@ -83,16 +82,11 @@ bool ITraceSourceFactory::PrepareTraceFile(TraceFileSource source)
     if (!traceFileFd_) {
         return false;
     }
-    const int lockResult = TEMP_FAILURE_RETRY(flock(traceFileFd_.GetFd(), LOCK_EX | LOCK_NB));
-    if (lockResult != 0) {
-        HILOG_ERROR(LOG_CORE, "Lock trace file failed, errno %{public}d", errno);
-    }
-    if (lockResult != 0 || !SetTraceFileSource(traceFileFd_.GetFd(), source)) {
+    if (!SetTraceFileSource(traceFileFd_.GetFd(), source)) {
         traceFileFd_.Reset();
         RemoveFile(CanonicalizeSpecPath(traceFilePath_.c_str()));
         return false;
     }
-    // Keep the file locked until the writer closes or replaces its fd.
     source_ = source;
     return true;
 }

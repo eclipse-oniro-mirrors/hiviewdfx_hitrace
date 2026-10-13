@@ -459,28 +459,20 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         return false;
     }
     traceFile = traceSourceFactory->GetTraceFilePath();
-    if (param.type == TraceDumpType::TRACE_CACHE && !SaveCacheTraceFile(traceFile, dumpRet)) {
-        traceSourceFactory.reset();
-        RemoveFile(traceFile);
-        return false;
+    if (param.type == TraceDumpType::TRACE_CACHE) {
+        TraceFileInfo traceFileInfo;
+        TimestampRange range{dumpRet.traceStartTime, dumpRet.traceEndTime};
+        if (!SetFileInfo(true, traceFile, range, traceFileInfo)) {
+            RemoveFile(traceFile);
+            return false;
+        }
+        traceFile = traceFileInfo.filename;
+        cacheTraceFiles_.emplace_back(traceFileInfo);
     }
     if (access(traceFile.c_str(), F_OK) == -1) {
         HILOG_ERROR(LOG_CORE, "DoDumpTraceLoop : Trace file (%{public}s) not found.", traceFile.c_str());
         return false;
     }
-    traceSourceFactory.reset();
-    return true;
-}
-
-bool TraceDumpExecutor::SaveCacheTraceFile(std::string& traceFile, const TraceDumpRet& dumpRet)
-{
-    TraceFileInfo traceFileInfo;
-    TimestampRange range{dumpRet.traceStartTime, dumpRet.traceEndTime};
-    if (!SetFileInfo(true, traceFile, range, traceFileInfo)) {
-        return false;
-    }
-    traceFile = traceFileInfo.filename;
-    cacheTraceFiles_.emplace_back(traceFileInfo);
     return true;
 }
 

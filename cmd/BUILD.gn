@@ -27,10 +27,7 @@ ohos_executable("hitrace") {
     "$hitrace_utils_path",
   ]
 
-  sources = [
-    "hitrace_cmd.cpp",
-    "trace_output.cpp",
-  ]
+  sources = [ "hitrace_cmd.cpp" ]
 
   deps = [
     "$hitrace_config_path:hitrace_tags",

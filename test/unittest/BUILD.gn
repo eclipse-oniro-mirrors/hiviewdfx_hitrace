@@ -523,7 +523,6 @@ ohos_unittest("HitraceCMDTest") {
 
   sources = [
     "$hitrace_cmd_path/hitrace_cmd.cpp",
-    "$hitrace_cmd_path/trace_output.cpp",
     "hitrace_cmd/hitrace_cmd_test.cpp",
   ]
 

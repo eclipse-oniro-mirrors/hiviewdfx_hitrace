@@ -516,8 +516,8 @@ std::string RenameCacheFile(const std::string& cacheFile, TraceFileSource source
         return cacheFile;
     }
     SmartFd fd(open(cacheFile.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-    if (!fd || TEMP_FAILURE_RETRY(flock(fd.GetFd(), LOCK_EX | LOCK_NB)) != 0) {
-        HILOG_ERROR(LOG_CORE, "Lock cache for conversion failed, errno %{public}d", errno);
+    if (!fd) {
+        HILOG_ERROR(LOG_CORE, "Open cache for conversion failed, errno %{public}d", errno);
         return "";
     }
     if (!SetTraceFileSource(fd.GetFd(), source)) {

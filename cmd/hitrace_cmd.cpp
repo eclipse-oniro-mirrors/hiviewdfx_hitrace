@@ -46,7 +46,6 @@
 #include "securec.h"
 #include "smart_fd.h"
 #include "trace_file_utils.h"
-#include "trace_output.h"
 #include "trace_collector_client.h"
 #include "trace_json_parser.h"
 #include "hitrace_dump.h"
@@ -1714,12 +1713,23 @@ static void DumpKernelTraceToOutput()
         return;
     }
     OHOS::HiviewDFX::SmartFd outFileFd;
-    std::string outputError;
-    if (!PrepareTraceOutput(g_traceArgs.output, outFileFd, outputError)) {
-        ConsoleLog(outputError);
-        g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
-        g_traceSysEventParams.errorMessage = outputError;
-        return;
+    if (g_traceArgs.output.size() > 0) {
+        std::string outSpecPath = CanonicalizeSpecPath(g_traceArgs.output.c_str());
+        if (outSpecPath.empty() || !IsWritable(outSpecPath)) {
+            ConsoleLog("error: output path is illegal: " + g_traceArgs.output);
+            g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
+            g_traceSysEventParams.errorMessage = "error: output path is illegal: " + g_traceArgs.output;
+            return;
+        }
+        outFileFd = OHOS::HiviewDFX::SmartFd(
+            open(outSpecPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH));
+        if (!outFileFd) {
+            ConsoleLog("error: opening " + g_traceArgs.output + ", errno: " + std::to_string(errno));
+            g_traceSysEventParams.errorCode = OPEN_FILE_PATH_FAILURE;
+            g_traceSysEventParams.errorMessage = "error: opening " + g_traceArgs.output + ", errno: " +
+                std::to_string(errno);
+            return;
+        }
     }
     int outFd = outFileFd ? outFileFd.GetFd() : STDOUT_FILENO;
     ssize_t bytesWritten;

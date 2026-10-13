@@ -826,10 +826,6 @@ void WaitAsyncDumpRetLoop(const std::shared_ptr<HitraceDumpPipe> pipe)
             HILOG_INFO(LOG_CORE, "WaitAsyncDumpRetLoop: task finished.");
             std::lock_guard<std::mutex> lock(g_traceRetAndCallbackMutex);
             auto traceRetInfo = g_traceRetInfos[task.time];
-            traceRetInfo.errorCode = task.code;
-            if (task.code != TraceErrorCode::SUCCESS) {
-                traceRetInfo.outputFiles.clear();
-            }
             traceRetInfo.fileSize = 0;
             for (auto& file : traceRetInfo.outputFiles) {
                 traceRetInfo.fileSize += GetFileSize(file);

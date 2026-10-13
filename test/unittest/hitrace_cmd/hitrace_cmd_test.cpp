@@ -125,6 +125,14 @@ public:
         EXPECT_STREQ(source, expected);
     }
 
+    void ExpectNoSource(const std::string& path)
+    {
+        char source[16] = {};
+        errno = 0;
+        EXPECT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)), -1);
+        EXPECT_EQ(errno, ENODATA);
+    }
+
     static void RunCmd(const string& cmd)
     {
         std::vector<std::string> args;
@@ -743,20 +751,23 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest015, TestSize.Level1)
 }
 
 
-HWTEST_F(HitraceCMDTest, TextAndCompressedOutputUseUserSource, TestSize.Level1)
+HWTEST_F(HitraceCMDTest, TextAndCompressedOutputDoNotSetSource, TestSize.Level1)
 {
     ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_begin sched -b 1024 --overwrite", {"OpenRecording done"}));
     for (const std::string option : {std::string(), std::string(" -z")}) {
+        (void)remove("/data/local/tmp/testtrace.txt");
         ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_dump -o /data/local/tmp/testtrace.txt" + option,
             {"trace read done"}));
-        ExpectUserSource("/data/local/tmp/testtrace.txt");
+        EXPECT_FALSE(ReadFileContent("/data/local/tmp/testtrace.txt").empty());
+        ExpectNoSource("/data/local/tmp/testtrace.txt");
     }
     EXPECT_TRUE(CheckTraceCommandOutput("hitrace --trace_finish_nodump", {"end capture trace"}));
 }
 
-HWTEST_F(HitraceCMDTest, RedirectedTextOutputUsesUserSource, TestSize.Level1)
+HWTEST_F(HitraceCMDTest, RedirectedTextOutputDoesNotSetSource, TestSize.Level1)
 {
     ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_begin sched -b 1024 --overwrite", {"OpenRecording done"}));
+    (void)remove("/data/local/tmp/testtrace.txt");
     FILE* output = fopen("/data/local/tmp/testtrace.txt", "w");
     ASSERT_NE(output, nullptr);
     const int savedStdout = dup(STDOUT_FILENO);
@@ -774,7 +785,8 @@ HWTEST_F(HitraceCMDTest, RedirectedTextOutputUsesUserSource, TestSize.Level1)
     close(savedStdout);
     fclose(output);
     ASSERT_GE(redirected, 0);
-    ExpectUserSource("/data/local/tmp/testtrace.txt");
+    EXPECT_FALSE(ReadFileContent("/data/local/tmp/testtrace.txt").empty());
+    ExpectNoSource("/data/local/tmp/testtrace.txt");
     EXPECT_TRUE(CheckTraceCommandOutput("hitrace --trace_finish_nodump", {"end capture trace"}));
 }
 
