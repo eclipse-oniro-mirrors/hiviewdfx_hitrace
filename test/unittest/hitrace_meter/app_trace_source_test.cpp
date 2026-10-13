@@ -14,6 +14,7 @@
  */
 
 #include <cstdio>
+#include <cerrno>
 #include <cstdlib>
 #include <gtest/gtest.h>
 #include <string>
@@ -46,13 +47,18 @@ public:
         }
     }
 
-    void CheckUserSource()
+    void CheckSource(const std::string& expected)
     {
-        constexpr char expected[] = "user";
         char source[16] = {};
-        ASSERT_EQ(getxattr(outputFile_.c_str(), "user.trace_source", source, sizeof(source)),
-            static_cast<ssize_t>(sizeof(expected) - 1));
-        EXPECT_STREQ(source, expected);
+        const ssize_t length = getxattr(outputFile_.c_str(), "user.trace_source", source, sizeof(source));
+        const int savedErrno = errno;
+        if (expected.empty()) {
+            EXPECT_EQ(length, -1);
+            EXPECT_EQ(savedErrno, ENODATA);
+        } else {
+            ASSERT_EQ(length, static_cast<ssize_t>(expected.size()));
+            EXPECT_STREQ(source, expected.c_str());
+        }
     }
 
 protected:
@@ -60,17 +66,17 @@ protected:
     std::string outputFile_;
 };
 
-HWTEST_F(AppTraceSourceTest, ExplicitAppTraceFileUsesUserSource, TestSize.Level1)
+HWTEST_F(AppTraceSourceTest, ExternalAppTraceFileSkipsSource, TestSize.Level1)
 {
     constexpr uint64_t fileSize = 1024 * 1024;
     outputFile_ = directory_ + "/capture.trace";
     ASSERT_EQ(StartCaptureAppTrace(FLAG_MAIN_THREAD, HITRACE_TAG_OHOS, fileSize, outputFile_), RetType::RET_SUCC);
-    CheckUserSource();
+    CheckSource("");
     EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
-    CheckUserSource();
+    CheckSource("");
 }
 
-HWTEST_F(AppTraceSourceTest, DefaultAppTraceFileUsesUserSource, TestSize.Level1)
+HWTEST_F(AppTraceSourceTest, DefaultAppTraceFileSkipsSource, TestSize.Level1)
 {
     constexpr uint64_t fileSize = 1024 * 1024;
     std::string returnedPath;
@@ -78,8 +84,22 @@ HWTEST_F(AppTraceSourceTest, DefaultAppTraceFileUsesUserSource, TestSize.Level1)
     const auto separator = returnedPath.find_last_of('/');
     ASSERT_NE(separator, std::string::npos);
     outputFile_ = "/data/local/tmp/" + returnedPath.substr(separator + 1);
-    CheckUserSource();
+    CheckSource("");
     EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
-    CheckUserSource();
+    CheckSource("");
+}
+
+HWTEST_F(AppTraceSourceTest, ManagedAppTraceFileUsesUserSource, TestSize.Level1)
+{
+    char file[] = "/data/log/hitrace/app_source_XXXXXX";
+    const int fd = mkstemp(file);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    outputFile_ = file;
+    constexpr uint64_t fileSize = 1024 * 1024;
+    ASSERT_EQ(StartCaptureAppTrace(FLAG_MAIN_THREAD, HITRACE_TAG_OHOS, fileSize, outputFile_), RetType::RET_SUCC);
+    CheckSource("user");
+    EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
+    CheckSource("user");
 }
 } // namespace OHOS::HiviewDFX::HitraceTest

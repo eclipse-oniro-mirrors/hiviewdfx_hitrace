@@ -1527,7 +1527,7 @@ static int PrepareAppTraceFile(std::string& fileName)
         return ret;
     }
 
-    if (!Hitrace::SetTraceFileSource(g_appFd.GetFd(), Hitrace::TraceFileSource::USER)) {
+    if (!Hitrace::SetTraceFileSource(g_appFd.GetFd(), destFileName, Hitrace::TraceFileSource::USER)) {
         ResetGlobalStatus();
         (void)remove(destFileName.c_str());
         return RET_FAILD;

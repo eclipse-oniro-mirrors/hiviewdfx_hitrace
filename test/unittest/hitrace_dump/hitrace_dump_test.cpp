@@ -1717,9 +1717,15 @@ public:
                 continue;
             }
             char source[16] = {};
-            ASSERT_EQ(getxattr(file.c_str(), "user.trace_source", source, sizeof(source)),
-                static_cast<ssize_t>(expected.size())) << file;
-            EXPECT_STREQ(source, expected.c_str()) << file;
+            const ssize_t length = getxattr(file.c_str(), "user.trace_source", source, sizeof(source));
+            const int savedErrno = errno;
+            if (expected.empty()) {
+                EXPECT_EQ(length, -1) << file;
+                EXPECT_EQ(savedErrno, ENODATA) << file;
+            } else {
+                ASSERT_EQ(length, static_cast<ssize_t>(expected.size())) << file;
+                EXPECT_STREQ(source, expected.c_str()) << file;
+            }
             ++count;
         }
         EXPECT_GT(count, 0u);
@@ -1803,7 +1809,7 @@ HWTEST_F(TraceSourceXattrTest, CachedSystemTraceAgeing, TestSize.Level2)
 }
 
 
-HWTEST_F(TraceSourceXattrTest, RecordingFilesUseUserSource, TestSize.Level2)
+HWTEST_F(TraceSourceXattrTest, RecordingSourceFollowsManagedDirectory, TestSize.Level2)
 {
     for (const std::string path : {std::string(), directory_ + "/record.sys", std::string("/data/local/tmp/")}) {
         ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1"), SUCCESS);
@@ -1812,7 +1818,7 @@ HWTEST_F(TraceSourceXattrTest, RecordingFilesUseUserSource, TestSize.Level2)
         const auto ret = RecordTraceOff();
         EXPECT_EQ(ret.errorCode, SUCCESS);
         ASSERT_EQ(CloseTrace(), SUCCESS);
-        CheckNewFilesSource(ret.outputFiles, "user");
+        CheckNewFilesSource(ret.outputFiles, path.empty() ? "user" : "");
         for (const auto& file : ret.outputFiles) {
             if (file.find("/data/local/tmp/") == 0) {
                 EXPECT_EQ(remove(file.c_str()), 0);
@@ -1821,7 +1827,7 @@ HWTEST_F(TraceSourceXattrTest, RecordingFilesUseUserSource, TestSize.Level2)
     }
 }
 
-HWTEST_F(TraceSourceXattrTest, RecordingSlicesUseUserSource, TestSize.Level2)
+HWTEST_F(TraceSourceXattrTest, ExternalRecordingSlicesSkipSource, TestSize.Level2)
 {
     ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1 fileSize:1"), SUCCESS);
     ASSERT_EQ(RecordTraceOn("/data/local/tmp/"), SUCCESS);
@@ -1830,7 +1836,7 @@ HWTEST_F(TraceSourceXattrTest, RecordingSlicesUseUserSource, TestSize.Level2)
     EXPECT_EQ(ret.errorCode, SUCCESS);
     ASSERT_EQ(CloseTrace(), SUCCESS);
     EXPECT_GE(ret.outputFiles.size(), 2u);
-    CheckNewFilesSource(ret.outputFiles, "user");
+    CheckNewFilesSource(ret.outputFiles, "");
     for (const auto& file : ret.outputFiles) {
         if (originalFiles_.count(file) == 0) {
             EXPECT_EQ(remove(file.c_str()), 0);
@@ -1905,21 +1911,21 @@ HWTEST_F(TraceSourceXattrTest, ReusingSnapshotPreservesConvertedUserSource, Test
 }
 
 
-HWTEST_F(TraceSourceXattrTest, CacheLikeSnapshotNameKeepsUserSource, TestSize.Level2)
+HWTEST_F(TraceSourceXattrTest, ExternalCacheLikeSnapshotKeepsOriginalFile, TestSize.Level2)
 {
     const std::string userFile = directory_ + "/cache_trace_user.sys";
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
     sleep(2);
     const auto userRet = DumpTrace(0, 0, userFile);
     ASSERT_EQ(userRet.errorCode, SUCCESS);
-    CheckNewFilesSource({userFile}, "user");
+    CheckNewFilesSource({userFile}, "");
     sleep(1);
     const auto systemRet = DumpTrace();
     EXPECT_EQ(systemRet.errorCode, SUCCESS);
     EXPECT_EQ(CloseTrace(), SUCCESS);
     EXPECT_NE(std::find(systemRet.outputFiles.begin(), systemRet.outputFiles.end(), userFile),
         systemRet.outputFiles.end()) << userFile;
-    CheckNewFilesSource({userFile}, "user");
+    CheckNewFilesSource({userFile}, "");
     EXPECT_NE(access((directory_ + "/trace_user.sys").c_str(), F_OK), 0);
 }
 
@@ -1964,7 +1970,7 @@ HWTEST_F(TraceSourceXattrTest, DefaultDirectorySourceTag, TestSize.Level2)
 
 /**
  * @tc.name: SourceTag001
- * @tc.desc: Verify source xattrs on newly generated system and user traces.
+ * @tc.desc: Verify managed system traces are tagged and external user outputs are not.
  * @tc.type: FUNC
  */
 HWTEST_F(TraceSourceXattrTest, SourceTag001, TestSize.Level2)
@@ -2009,7 +2015,7 @@ HWTEST_F(TraceSourceXattrTest, SourceTag001, TestSize.Level2)
     bool userFileExists = access(userPath.c_str(), F_OK) == 0;
     EXPECT_TRUE(userFileExists);
     if (userFileExists) {
-        checkSource(userPath, "user");
+        CheckNewFilesSource({userPath}, "");
         EXPECT_EQ(remove(userPath.c_str()), 0);
     }
 }

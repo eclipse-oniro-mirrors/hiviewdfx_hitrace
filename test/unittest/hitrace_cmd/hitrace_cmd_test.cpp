@@ -116,15 +116,6 @@ public:
         return output;
     }
 
-    void ExpectUserSource(const std::string& path)
-    {
-        constexpr char expected[] = "user";
-        char source[16] = {};
-        ASSERT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)),
-            static_cast<ssize_t>(sizeof(expected) - 1));
-        EXPECT_STREQ(source, expected);
-    }
-
     void ExpectNoSource(const std::string& path)
     {
         char source[16] = {};
@@ -1564,7 +1555,7 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest044, TestSize.Level1)
     EXPECT_NE(output.find("boot_trace: wrote"), std::string::npos) << output;
     std::string traceContent = ReadFileContent(std::string(BOOT_TRACE_CONFIG_DIR) + fileName);
     EXPECT_FALSE(traceContent.empty()) << "boot-trace should respect configured output path";
-    ExpectUserSource(customOut);
+    ExpectNoSource(customOut);
 
     RemoveBootTraceOutput(fileName);
     RemoveBootTraceConfig();

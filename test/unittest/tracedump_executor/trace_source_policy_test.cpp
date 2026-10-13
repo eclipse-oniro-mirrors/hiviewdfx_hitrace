@@ -14,6 +14,7 @@
  */
 
 #include <cstdio>
+#include <cerrno>
 #include <cstdlib>
 #include <ctime>
 #include <dirent.h>
@@ -138,28 +139,42 @@ void ExpectSource(const std::string& file, const std::string& expected)
         static_cast<ssize_t>(expected.size()));
     EXPECT_STREQ(source, expected.c_str());
 }
+
+void ExpectNoSource(const std::string& file)
+{
+    char source[16] = {};
+    const ssize_t result = getxattr(file.c_str(), "user.trace_source", source, sizeof(source));
+    const int savedErrno = errno;
+    EXPECT_EQ(result, -1);
+    EXPECT_EQ(savedErrno, ENODATA);
+}
 }
 
 class TraceSourcePolicyTest : public testing::Test {
 public:
     void SetUp() override
     {
-        char directory[] = "/data/local/tmp/trace_source_policy_XXXXXX";
+        char directory[] = "/data/log/hitrace/source_policy_XXXXXX";
         ASSERT_NE(mkdtemp(directory), nullptr);
         directory_ = directory;
+        char externalDirectory[] = "/data/local/tmp/trace_source_policy_XXXXXX";
+        ASSERT_NE(mkdtemp(externalDirectory), nullptr);
+        externalDirectory_ = externalDirectory;
     }
 
     void TearDown() override
     {
         TraceDumpState::GetInstance().EndLoopDumpSelf();
-        if (directory_.empty()) {
-            return;
+        for (const auto& directory : {directory_, externalDirectory_}) {
+            if (directory.empty()) {
+                continue;
+            }
+            EXPECT_TRUE(TraverseFiles(directory, false, [](const char* path, const dirent* entry) {
+                const std::string file = std::string(path) + "/" + entry->d_name;
+                EXPECT_EQ(remove(file.c_str()), 0);
+            }));
+            EXPECT_EQ(rmdir(directory.c_str()), 0);
         }
-        EXPECT_TRUE(TraverseFiles(directory_, false, [](const char* path, const dirent* entry) {
-            const std::string file = std::string(path) + "/" + entry->d_name;
-            EXPECT_EQ(remove(file.c_str()), 0);
-        }));
-        EXPECT_EQ(rmdir(directory_.c_str()), 0);
     }
 
     void CheckSystemFileAgeing(std::shared_ptr<FailingSourceFactory>& factory, const std::string& file)
@@ -183,6 +198,7 @@ public:
 
 protected:
     std::string directory_;
+    std::string externalDirectory_;
 };
 
 HWTEST_F(TraceSourcePolicyTest, AsyncWriteFailureRetainsSystemSource, TestSize.Level1)
@@ -296,6 +312,29 @@ HWTEST_F(TraceSourcePolicyTest, FactoriesTagCreatedAndReplacementFiles, TestSize
             const std::string replacement = file + "_replacement";
             ASSERT_TRUE(factory->UpdateTraceFile(replacement));
             ExpectSource(replacement, expected);
+        }
+    }
+}
+
+HWTEST_F(TraceSourcePolicyTest, ReplacementUsesActualOutputDirectory, TestSize.Level1)
+{
+    int index = 0;
+    for (const auto source : {TraceFileSource::SYSTEM, TraceFileSource::USER}) {
+        for (const bool hm : {false, true}) {
+            const std::string name = "/trace_" + std::to_string(index++);
+            const std::string externalFile = externalDirectory_ + name;
+            std::shared_ptr<ITraceSourceFactory> factory;
+            if (hm) {
+                factory = std::make_shared<TraceSourceHMFactory>(externalFile, source);
+            } else {
+                factory = std::make_shared<TraceSourceLinuxFactory>(externalFile, source);
+            }
+            ASSERT_EQ(access(externalFile.c_str(), F_OK), 0);
+            ExpectNoSource(externalFile);
+            ASSERT_TRUE(factory->UpdateTraceFile(directory_ + name));
+            ExpectSource(directory_ + name, source == TraceFileSource::SYSTEM ? "system" : "user");
+            ASSERT_TRUE(factory->UpdateTraceFile(externalFile));
+            ExpectNoSource(externalFile);
         }
     }
 }

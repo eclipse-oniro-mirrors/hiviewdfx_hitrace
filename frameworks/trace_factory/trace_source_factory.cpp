@@ -82,7 +82,7 @@ bool ITraceSourceFactory::PrepareTraceFile(TraceFileSource source)
     if (!traceFileFd_) {
         return false;
     }
-    if (!SetTraceFileSource(traceFileFd_.GetFd(), source)) {
+    if (!SetTraceFileSource(traceFileFd_.GetFd(), traceFilePath_, source)) {
         traceFileFd_.Reset();
         RemoveFile(CanonicalizeSpecPath(traceFilePath_.c_str()));
         return false;

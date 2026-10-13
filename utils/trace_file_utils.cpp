@@ -520,7 +520,7 @@ std::string RenameCacheFile(const std::string& cacheFile, TraceFileSource source
         HILOG_ERROR(LOG_CORE, "Open cache for conversion failed, errno %{public}d", errno);
         return "";
     }
-    if (!SetTraceFileSource(fd.GetFd(), source)) {
+    if (!SetTraceFileSource(fd.GetFd(), cacheFile, source)) {
         return "";
     }
     std::string dirPath = cacheFile.substr(0, cacheFile.find_last_of("/") + 1);
@@ -530,7 +530,7 @@ std::string RenameCacheFile(const std::string& cacheFile, TraceFileSource source
     if (rename(cacheFile.c_str(), newFilePath.c_str()) != 0) {
         HILOG_ERROR(LOG_CORE, "rename %{public}s to %{public}s failed, errno: %{public}d.",
             cacheFile.c_str(), newFilePath.c_str(), errno);
-        if (!SetTraceFileSource(fd.GetFd(), TraceFileSource::SYSTEM)) {
+        if (!SetTraceFileSource(fd.GetFd(), cacheFile, TraceFileSource::SYSTEM)) {
             HILOG_ERROR(LOG_CORE, "Restore cache source failed: %{public}s", cacheFile.c_str());
         }
         return "";

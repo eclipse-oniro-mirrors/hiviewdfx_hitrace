@@ -55,8 +55,12 @@ constexpr int BUFFER_LEN = 32;
 constexpr int EXPECT_NUM = 2;
 }
 
-bool SetTraceFileSource(int fd, TraceFileSource source)
+bool SetTraceFileSource(int fd, const std::string& filePath, TraceFileSource source)
 {
+    const auto path = CanonicalizeSpecPath(filePath.c_str());
+    if (path.compare(0, strlen(TRACE_FILE_DEFAULT_DIR), TRACE_FILE_DEFAULT_DIR) != 0) {
+        return true;
+    }
     if (source != TraceFileSource::SYSTEM && source != TraceFileSource::USER) {
         errno = EINVAL;
         return false;

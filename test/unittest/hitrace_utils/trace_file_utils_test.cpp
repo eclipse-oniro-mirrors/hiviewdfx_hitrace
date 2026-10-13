@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 #include <cstring>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <fcntl.h>
@@ -174,7 +175,7 @@ protected:
 
     void SetUp() override
     {
-        char directory[] = "/data/local/tmp/hitrace_cache_size_XXXXXX";
+        char directory[] = "/data/log/hitrace/cache_size_XXXXXX";
         ASSERT_NE(mkdtemp(directory), nullptr);
         directory_ = directory;
     }
@@ -375,9 +376,42 @@ HWTEST_F(CacheTraceFileSizeTest, InvalidSourceDoesNotReplaceExistingTag, TestSiz
     ASSERT_TRUE(AddCacheFile("A"));
     SmartFd fd(open(Path("A").c_str(), O_RDONLY));
     ASSERT_TRUE(fd);
-    ASSERT_TRUE(Hitrace::SetTraceFileSource(fd.GetFd(), Hitrace::TraceFileSource::USER));
-    EXPECT_FALSE(Hitrace::SetTraceFileSource(fd.GetFd(), static_cast<Hitrace::TraceFileSource>(255)));
+    ASSERT_TRUE(Hitrace::SetTraceFileSource(fd.GetFd(), Path("A"), Hitrace::TraceFileSource::USER));
+    EXPECT_FALSE(Hitrace::SetTraceFileSource(fd.GetFd(), Path("A"), static_cast<Hitrace::TraceFileSource>(255)));
     ExpectSource(Path("A"), "user");
+}
+
+HWTEST_F(CacheTraceFileSizeTest, ExternalPathsDoNotRequireSourceAttributes, TestSize.Level1)
+{
+    for (const std::string path : {"/data/local/tmp/external.sys", "/data/log/hitrace-other/external.sys",
+        "/data/log/hitrace/../external.sys"}) {
+        EXPECT_TRUE(Hitrace::SetTraceFileSource(-1, path, Hitrace::TraceFileSource::SYSTEM)) << path;
+    }
+    char externalFile[] = "/data/local/tmp/trace_source_external_XXXXXX";
+    SmartFd fd(mkstemp(externalFile));
+    ASSERT_TRUE(fd);
+    createdFiles_.push_back(externalFile);
+    constexpr char existingSource[] = "existing";
+    ASSERT_EQ(fsetxattr(fd.GetFd(), "user.trace_source", existingSource, sizeof(existingSource) - 1, 0), 0);
+    ASSERT_TRUE(Hitrace::SetTraceFileSource(fd.GetFd(), externalFile, Hitrace::TraceFileSource::USER));
+    ExpectSource(externalFile, existingSource);
+}
+
+HWTEST_F(CacheTraceFileSizeTest, SourceScopeUsesResolvedOutputPath, TestSize.Level1)
+{
+    char externalFile[] = "/data/local/tmp/trace_source_alias_XXXXXX";
+    SmartFd fd(mkstemp(externalFile));
+    ASSERT_TRUE(fd);
+    createdFiles_.push_back(externalFile);
+    const auto alias = Path("external.sys");
+    ASSERT_EQ(symlink(externalFile, alias.c_str()), 0);
+    createdFiles_.push_back(alias);
+    EXPECT_TRUE(Hitrace::SetTraceFileSource(-1, alias, Hitrace::TraceFileSource::SYSTEM));
+    char source[16] = {};
+    const ssize_t result = fgetxattr(fd.GetFd(), "user.trace_source", source, sizeof(source));
+    const int savedErrno = errno;
+    EXPECT_EQ(result, -1);
+    EXPECT_EQ(savedErrno, ENODATA);
 }
 
 } // namespace HiviewDFX
