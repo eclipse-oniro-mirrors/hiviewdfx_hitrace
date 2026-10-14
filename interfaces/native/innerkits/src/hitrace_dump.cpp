@@ -436,10 +436,9 @@ void RestoreTimeIntervalBoundary()
     g_traceEndTime = std::numeric_limits<uint64_t>::max();
 }
 
-int32_t GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
+void GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
     std::vector<TraceFileInfo>& fileVec, std::vector<TraceFileInfo>& targetFiles)
 {
-    int32_t coverDuration = 0;
     uint64_t utTargetStartTimeMs = inputTraceStartTime * S_TO_MS;
     uint64_t utTargetEndTimeMs = inputTraceEndTime * S_TO_MS;
     for (const auto& it : fileVec) {
@@ -454,11 +453,8 @@ int32_t GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t&
             HILOG_INFO(LOG_CORE, "GetTraceFileFromVec: %{public}s, [%{public}" PRIu64 ", %{public}" PRIu64 "].",
                 fileName.c_str(), it.traceStartTime, it.traceEndTime);
             targetFiles.push_back(it);
-            coverDuration += static_cast<int32_t>(std::min(it.traceEndTime, utTargetEndTimeMs + DURATION_TOLERANCE) -
-                std::max(it.traceStartTime, utTargetStartTimeMs - DURATION_TOLERANCE));
         }
     }
-    return coverDuration;
 }
 
 TraceErrorCode SearchTraceFiles(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
