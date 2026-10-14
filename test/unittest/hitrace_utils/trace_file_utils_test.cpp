@@ -309,7 +309,6 @@ HWTEST_F(CacheTraceFileSizeTest, OverLimitEvictsOldestOnly, TestSize.Level1)
 
 HWTEST_F(CacheTraceFileSizeTest, FailedDeletionRemainsTrackedForRetry, TestSize.Level1)
 {
-    // A nonempty directory makes remove fail even when the test runs as root.
     ASSERT_EQ(mkdir(Path("A").c_str(), 0700), 0);
     createdFiles_.push_back(Path("A"));
     Hitrace::TraceFileInfo blocked;

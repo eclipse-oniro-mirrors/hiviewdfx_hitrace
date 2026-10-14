@@ -441,7 +441,6 @@ void ClearCacheTraceFileBySize(std::vector<TraceFileInfo>& cacheFileVec, const u
         return;
     }
     int64_t totalCacheFileSize = 0;
-    // Reconcile every entry before eviction: a missing file may follow a valid older file.
     for (auto it = cacheFileVec.begin(); it != cacheFileVec.end();) {
         if (access(it->filename.c_str(), F_OK) != 0 && errno == ENOENT) {
             it = cacheFileVec.erase(it);

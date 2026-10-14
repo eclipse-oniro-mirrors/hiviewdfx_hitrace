@@ -99,4 +99,4 @@ HWTEST_F(AppTraceSourceTest, ManagedAppTraceFileUsesUserSource, TestSize.Level1)
     CheckSource("user");
     EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
 }
-} // namespace OHOS::HiviewDFX::HitraceTest
+}

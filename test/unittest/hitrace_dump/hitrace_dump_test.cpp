@@ -1783,11 +1783,6 @@ protected:
     std::string directory_;
 };
 
-/**
- * @tc.name: AsyncSystemTraceAgeing
- * @tc.desc: Completed asynchronous system snapshots are tagged and can be aged.
- * @tc.type: FUNC
- */
 HWTEST_F(TraceSourceXattrTest, AsyncSystemTraceAgeing, TestSize.Level2)
 {
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
@@ -1805,15 +1800,10 @@ HWTEST_F(TraceSourceXattrTest, AsyncSystemTraceAgeing, TestSize.Level2)
     CheckNewSystemFilesAge(completed.outputFiles);
 }
 
-/**
- * @tc.name: CachedSystemTraceAgeing
- * @tc.desc: Cached slices retain their system source when promoted to snapshots and can be aged.
- * @tc.type: FUNC
- */
 HWTEST_F(TraceSourceXattrTest, CachedSystemTraceAgeing, TestSize.Level2)
 {
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
-    ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS); // 50 MB cache, one-second slices
+    ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
     std::this_thread::sleep_for(std::chrono::seconds(3));
     std::vector<TraceFileInfo> cacheFiles;
     GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
@@ -1985,7 +1975,6 @@ HWTEST_F(TraceSourceXattrTest, DefaultDirectorySourceTag, TestSize.Level2)
 
 /**
  * @tc.name: SourceTag001
- * @tc.desc: Verify managed system traces are tagged and external user outputs are not.
  * @tc.type: FUNC
  */
 HWTEST_F(TraceSourceXattrTest, SourceTag001, TestSize.Level2)
