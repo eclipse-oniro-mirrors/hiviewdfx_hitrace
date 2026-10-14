@@ -154,8 +154,7 @@ TraceDumpRet TraceDumpExecutor::DumpTrace(const TraceDumpParam& param, const std
 {
     MarkClockSync(Hitrace::GetTraceRootPath());
     std::string traceFile = GenerateTraceFileName(param.type, outputPath);
-    const auto source = outputPath.empty() ? TraceFileSource::SYSTEM : TraceFileSource::USER;
-    return DumpTraceInner(param, traceFile, source);
+    return DumpTraceInner(param, traceFile, !outputPath.empty());
 }
 
 std::vector<TraceFileInfo> TraceDumpExecutor::GetCacheTraceFiles()
@@ -433,12 +432,11 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
     if (param.fileSize != 0) {
         fileSizeThreshold = param.fileSize * BYTE_PER_KB;
     }
-    const auto source = param.type == TraceDumpType::TRACE_CACHE ? TraceFileSource::SYSTEM : TraceFileSource::USER;
     std::shared_ptr<ITraceSourceFactory> traceSourceFactory = nullptr;
     if (IsHmKernel()) {
-        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, source);
+        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, param.type != TRACE_CACHE);
     } else {
-        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, source);
+        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, param.type != TRACE_CACHE);
     }
 
     std::lock_guard<std::mutex> lck(traceFileMutex_);
@@ -448,8 +446,7 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         .limitFileSz = isLimited,
         .traceStartTime = param.traceStartTime,
         .traceEndTime = param.traceEndTime,
-        .cacheSliceDuration = param.cacheSliceDuration,
-        .source = source
+        .cacheSliceDuration = param.cacheSliceDuration
     };
     auto dumpRet = ExecuteDumpTrace(traceSourceFactory, request);
     HILOG_INFO(LOG_CORE, "DoDumpTraceLoop: ExecuteDumpTrace done, errorcode: %{public}d, tracefile: %{public}s",
@@ -459,8 +456,15 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
         return false;
     }
     traceFile = traceSourceFactory->GetTraceFilePath();
-    if (param.type == TraceDumpType::TRACE_CACHE && !SaveCacheTraceFile(traceFile, dumpRet)) {
-        return false;
+    if (param.type == TraceDumpType::TRACE_CACHE) {
+        TraceFileInfo traceFileInfo;
+        TimestampRange range{dumpRet.traceStartTime, dumpRet.traceEndTime};
+        if (!SetFileInfo(true, traceFile, range, traceFileInfo)) {
+            RemoveFile(traceFile);
+            return false;
+        }
+        traceFile = traceFileInfo.filename;
+        cacheTraceFiles_.emplace_back(traceFileInfo);
     }
     if (access(traceFile.c_str(), F_OK) == -1) {
         HILOG_ERROR(LOG_CORE, "DoDumpTraceLoop : Trace file (%{public}s) not found.", traceFile.c_str());
@@ -469,21 +473,8 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
     return true;
 }
 
-bool TraceDumpExecutor::SaveCacheTraceFile(std::string& traceFile, const TraceDumpRet& dumpRet)
-{
-    TraceFileInfo traceFileInfo;
-    TimestampRange range{dumpRet.traceStartTime, dumpRet.traceEndTime};
-    if (!SetFileInfo(true, traceFile, range, traceFileInfo)) {
-        RemoveFile(traceFile);
-        return false;
-    }
-    traceFile = traceFileInfo.filename;
-    cacheTraceFiles_.emplace_back(traceFileInfo);
-    return true;
-}
-
 TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile,
-    TraceFileSource source)
+    bool isUserTrace)
 {
     std::shared_ptr<ITraceSourceFactory> traceSourceFactory = nullptr;
     if (Hitrace::GetTraceRootPath().empty()) {
@@ -491,16 +482,15 @@ TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, cons
         return { TraceErrorCode::TRACE_NOT_SUPPORTED, "", 0, 0, 0 };
     }
     if (IsHmKernel()) {
-        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, source);
+        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, isUserTrace);
     } else {
-        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, source);
+        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, isUserTrace);
     }
 
     TraceDumpRequest request = {
         .type = param.type,
         .traceStartTime = param.traceStartTime,
-        .traceEndTime = param.traceEndTime,
-        .source = source
+        .traceEndTime = param.traceEndTime
     };
     return ExecuteDumpTrace(traceSourceFactory, request);
 }
@@ -563,8 +553,7 @@ bool TraceDumpExecutor::DoWriteRawTrace(TraceDumpTask& task)
         .type = TraceDumpType::TRACE_ASYNC_WRITE,
         .traceStartTime = task.traceStartTime,
         .traceEndTime = task.traceEndTime,
-        .taskId = task.time,
-        .source = TraceFileSource::SYSTEM
+        .taskId = task.time
     };
     auto ret = ExecuteDumpTrace(traceSourceFactory, request);
     task.code = ret.code;

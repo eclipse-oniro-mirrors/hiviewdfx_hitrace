@@ -24,11 +24,9 @@
 namespace OHOS {
 namespace HiviewDFX {
 namespace Hitrace {
-enum class TraceFileSource : uint8_t;
-
 std::string CanonicalizeSpecPath(const char* src);
 
-bool SetTraceFileSource(int fd, const std::string& filePath, TraceFileSource source);
+bool SetTraceSourceXattr(int fd, const std::string& filePath, bool isUserTrace);
 
 bool MarkClockSync(const std::string& traceRootPath);
 

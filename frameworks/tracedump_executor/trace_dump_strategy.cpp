@@ -102,9 +102,8 @@ TraceDumpRet ITraceDumpStrategy::Execute(std::shared_ptr<ITraceSourceFactory> tr
 bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
     const TraceDumpRequest& request, TraceDumpRet& ret, int& newFileCount)
 {
-    // Source identifies the request even if initialization or writing later fails.
     if (request.type != TraceDumpType::TRACE_ASYNC_READ &&
-        !traceSourceFactory->PrepareTraceFile(request.source)) {
+        !traceSourceFactory->IsTraceFileValid()) {
         ret = {TraceErrorCode::WRITE_TRACE_INFO_ERROR, "", 0, 0, 0};
         return false;
     }

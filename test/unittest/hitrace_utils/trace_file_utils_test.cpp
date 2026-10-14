@@ -292,7 +292,7 @@ HWTEST_F(CacheTraceFileSizeTest, PromotedFileLeavesCacheBudget, TestSize.Level1)
 {
     ASSERT_TRUE(AddCacheFile("cache_trace_A"));
     ASSERT_TRUE(AddCacheFiles("BCD"));
-    const auto promoted = Hitrace::RenameCacheFile(Path("cache_trace_A"), Hitrace::TraceFileSource::SYSTEM);
+    const auto promoted = Hitrace::RenameCacheFile(Path("cache_trace_A"), false);
     createdFiles_.push_back(promoted);
     ASSERT_EQ(promoted, Path("trace_A"));
     Hitrace::ClearCacheTraceFileBySize(cacheFiles_, 3 * fileSize);
@@ -339,16 +339,16 @@ HWTEST_F(CacheTraceFileSizeTest, ZeroLimitAndEmptyCache, TestSize.Level1)
 
 HWTEST_F(CacheTraceFileSizeTest, ConversionUsesRequestSourceAndPreservesMtime, TestSize.Level1)
 {
-    for (const auto source : {Hitrace::TraceFileSource::USER, Hitrace::TraceFileSource::SYSTEM}) {
+    for (const bool isUserTrace : {true, false}) {
         ASSERT_TRUE(AddCacheFile("cache_trace_A"));
         const auto cache = Path("cache_trace_A");
         ASSERT_EQ(setxattr(cache.c_str(), "user.trace_source", "system", 6, 0), 0);
         timespec times[2] = {{1, 0}, {1, 0}};
         ASSERT_EQ(utimensat(AT_FDCWD, cache.c_str(), times, 0), 0);
-        const auto snapshot = Hitrace::RenameCacheFile(cache, source);
+        const auto snapshot = Hitrace::RenameCacheFile(cache, isUserTrace);
         createdFiles_.push_back(snapshot);
         ASSERT_EQ(snapshot, Path("trace_A"));
-        ExpectSource(snapshot, source == Hitrace::TraceFileSource::USER ? "user" : "system");
+        ExpectSource(snapshot, isUserTrace ? "user" : "system");
         struct stat info {};
         ASSERT_EQ(stat(snapshot.c_str(), &info), 0);
         EXPECT_EQ(info.st_mtim.tv_sec, 1);
@@ -366,7 +366,7 @@ HWTEST_F(CacheTraceFileSizeTest, FailedConversionRestoresCacheSource, TestSize.L
     ASSERT_EQ(setxattr(cache.c_str(), "user.trace_source", "system", 6, 0), 0);
     ASSERT_EQ(mkdir(Path("trace_A").c_str(), 0700), 0);
     createdFiles_.push_back(Path("trace_A"));
-    EXPECT_TRUE(Hitrace::RenameCacheFile(cache, Hitrace::TraceFileSource::USER).empty());
+    EXPECT_TRUE(Hitrace::RenameCacheFile(cache, true).empty());
     EXPECT_EQ(access(cache.c_str(), F_OK), 0);
     ExpectSource(cache, "system");
 }
@@ -375,7 +375,7 @@ HWTEST_F(CacheTraceFileSizeTest, ExternalPathsDoNotRequireSourceAttributes, Test
 {
     for (const std::string path : {"/data/local/tmp/external.sys", "/data/log/hitrace-other/external.sys",
         "/data/log/hitrace/../external.sys"}) {
-        EXPECT_TRUE(Hitrace::SetTraceFileSource(-1, path, Hitrace::TraceFileSource::SYSTEM)) << path;
+        EXPECT_TRUE(Hitrace::SetTraceSourceXattr(-1, path, false)) << path;
     }
     char externalFile[] = "/data/local/tmp/trace_source_external_XXXXXX";
     SmartFd fd(mkstemp(externalFile));
@@ -383,7 +383,7 @@ HWTEST_F(CacheTraceFileSizeTest, ExternalPathsDoNotRequireSourceAttributes, Test
     createdFiles_.push_back(externalFile);
     constexpr char existingSource[] = "existing";
     ASSERT_EQ(fsetxattr(fd.GetFd(), "user.trace_source", existingSource, sizeof(existingSource) - 1, 0), 0);
-    ASSERT_TRUE(Hitrace::SetTraceFileSource(fd.GetFd(), externalFile, Hitrace::TraceFileSource::USER));
+    ASSERT_TRUE(Hitrace::SetTraceSourceXattr(fd.GetFd(), externalFile, true));
     ExpectSource(externalFile, existingSource);
 }
 
@@ -396,7 +396,7 @@ HWTEST_F(CacheTraceFileSizeTest, SourceScopeUsesResolvedOutputPath, TestSize.Lev
     const auto alias = Path("external.sys");
     ASSERT_EQ(symlink(externalFile, alias.c_str()), 0);
     createdFiles_.push_back(alias);
-    EXPECT_TRUE(Hitrace::SetTraceFileSource(-1, alias, Hitrace::TraceFileSource::SYSTEM));
+    EXPECT_TRUE(Hitrace::SetTraceSourceXattr(-1, alias, false));
     char source[16] = {};
     const ssize_t result = fgetxattr(fd.GetFd(), "user.trace_source", source, sizeof(source));
     const int savedErrno = errno;

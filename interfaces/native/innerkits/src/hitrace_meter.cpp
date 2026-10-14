@@ -38,7 +38,6 @@
 
 #include "common_define.h"
 #include "common_utils.h"
-#include "hitrace_define.h"
 #include "securec.h"
 #include "hilog/log.h"
 #include "param/sys_param.h"
@@ -1526,8 +1525,7 @@ static int PrepareAppTraceFile(std::string& fileName)
         ResetGlobalStatus();
         return ret;
     }
-
-    if (!Hitrace::SetTraceFileSource(g_appFd.GetFd(), destFileName, Hitrace::TraceFileSource::USER)) {
+    if (!Hitrace::SetTraceSourceXattr(g_appFd.GetFd(), destFileName, true)) {
         ResetGlobalStatus();
         (void)remove(destFileName.c_str());
         return RET_FAILD;

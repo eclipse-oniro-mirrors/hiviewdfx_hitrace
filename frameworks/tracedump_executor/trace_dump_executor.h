@@ -72,8 +72,7 @@ private:
     TraceDumpRet ExecuteDumpTrace(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
         const TraceDumpRequest& request);
     bool DoDumpTraceLoop(const TraceDumpParam& param, std::string& traceFile, bool isLimited);
-    bool SaveCacheTraceFile(std::string& traceFile, const TraceDumpRet& dumpRet);
-    TraceDumpRet DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile, TraceFileSource source);
+    TraceDumpRet DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile, bool isUserTrace);
     bool DoReadRawTrace(TraceDumpTask& task);
     bool DoWriteRawTrace(TraceDumpTask& task);
     void DoProcessTraceDumpTask(std::shared_ptr<HitraceDumpPipe>& dumpPipe, TraceDumpTask& task,
