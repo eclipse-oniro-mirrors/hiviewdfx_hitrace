@@ -54,9 +54,7 @@ bool IsGenerateNewFile(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
     }
     count++;
     auto newFileName = GenerateTraceFileName(traceType);
-    if (!traceSourceFactory->UpdateTraceFile(newFileName)) {
-        return false;
-    }
+    traceSourceFactory->UpdateTraceFile(newFileName);
     HILOG_INFO(LOG_CORE, "IsGenerateNewFile: update tracesource filename : %{public}s", newFileName.c_str());
     return true;
 }
@@ -102,8 +100,7 @@ TraceDumpRet ITraceDumpStrategy::Execute(std::shared_ptr<ITraceSourceFactory> tr
 bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
     const TraceDumpRequest& request, TraceDumpRet& ret, int& newFileCount)
 {
-    if (request.type != TraceDumpType::TRACE_ASYNC_READ &&
-        !traceSourceFactory->IsTraceFileValid()) {
+    if (traceSourceFactory->HasTraceSourceError()) {
         ret = {TraceErrorCode::WRITE_TRACE_INFO_ERROR, "", 0, 0, 0};
         return false;
     }

@@ -469,9 +469,11 @@ void ClearCacheTraceFileBySize(std::vector<TraceFileInfo>& cacheFileVec, const u
         HILOG_INFO(LOG_CORE, "filename:%{public}s, fileSizeLimit:(%{public}" PRId64
             "), totalCacheFileSize:(%{public}" PRId64 "), fileSize:(%{public}" PRId64 ").",
             (*it).filename.c_str(), fileSizeLimit, totalCacheFileSize, (*it).fileSize);
-        if (remove(it->filename.c_str()) != 0 && errno != ENOENT) {
+        if (remove((*it).filename.c_str()) == 0) {
+            HILOG_INFO(LOG_CORE, "ClearCacheTraceFileBySize: delete first %{public}s success.", (*it).filename.c_str());
+        } else if (errno != ENOENT) {
             HILOG_ERROR(LOG_CORE, "ClearCacheTraceFileBySize: delete first: %{public}s failed, errno: %{public}d",
-                it->filename.c_str(), errno);
+                (*it).filename.c_str(), errno);
             ++it;
             continue;
         }

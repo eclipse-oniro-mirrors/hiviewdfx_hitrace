@@ -77,17 +77,15 @@ const std::string& ITraceSourceFactory::GetTraceFilePath()
     return traceFilePath_;
 }
 
-bool ITraceSourceFactory::IsTraceFileValid() const
+bool ITraceSourceFactory::HasTraceSourceError() const
 {
-    return traceFileFd_.GetFd() >= 0;
+    return hasTraceSourceError_;
 }
 
 bool ITraceSourceFactory::PrepareTraceFile()
 {
-    if (!traceFileFd_) {
-        return false;
-    }
-    if (!SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_)) {
+    hasTraceSourceError_ = !SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
+    if (hasTraceSourceError_) {
         traceFileFd_.Reset();
         RemoveFile(CanonicalizeSpecPath(traceFilePath_.c_str()));
         return false;
