@@ -1791,7 +1791,7 @@ protected:
 HWTEST_F(TraceSourceXattrTest, AsyncSystemTraceAgeing, TestSize.Level2)
 {
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
-    sleep(2);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
     auto completion = std::make_shared<std::promise<TraceRetInfo>>();
     auto result = completion->get_future();
     const auto ret = DumpTraceAsync(0, 0, INT64_MAX, [completion](TraceRetInfo info) {
@@ -1814,7 +1814,7 @@ HWTEST_F(TraceSourceXattrTest, CachedSystemTraceAgeing, TestSize.Level2)
 {
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
     ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS); // 50 MB cache, one-second slices
-    sleep(3);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     std::vector<TraceFileInfo> cacheFiles;
     GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
     const auto ret = DumpTrace();
@@ -1831,7 +1831,7 @@ HWTEST_F(TraceSourceXattrTest, RecordingSourceFollowsManagedDirectory, TestSize.
     for (const std::string path : {std::string(), directory_ + "/record.sys"}) {
         ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1"), SUCCESS);
         ASSERT_EQ(RecordTraceOn(path), SUCCESS);
-        sleep(2);
+        std::this_thread::sleep_for(std::chrono::seconds(2));
         const auto ret = RecordTraceOff();
         EXPECT_EQ(ret.errorCode, SUCCESS);
         ASSERT_EQ(CloseTrace(), SUCCESS);
@@ -1848,7 +1848,7 @@ HWTEST_F(TraceSourceXattrTest, ExternalRecordingSlicesSkipSource, TestSize.Level
 {
     ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1 fileSize:1"), SUCCESS);
     ASSERT_EQ(RecordTraceOn("/data/local/tmp/"), SUCCESS);
-    sleep(3);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     const auto ret = RecordTraceOff();
     EXPECT_EQ(ret.errorCode, SUCCESS);
     ASSERT_EQ(CloseTrace(), SUCCESS);
@@ -1866,7 +1866,7 @@ HWTEST_F(TraceSourceXattrTest, CacheConversionUsesExplicitUserPath, TestSize.Lev
     for (const std::string path : {std::string("/data/log/hitrace/"), directory_ + "/requested.sys"}) {
         ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
         ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
-        sleep(3);
+        std::this_thread::sleep_for(std::chrono::seconds(3));
         std::vector<TraceFileInfo> cacheFiles;
         GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
         ASSERT_FALSE(cacheFiles.empty());
@@ -1888,7 +1888,7 @@ HWTEST_F(TraceSourceXattrTest, AsyncCacheConversionUsesSystemSource, TestSize.Le
 {
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
     ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
-    sleep(3);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     std::vector<TraceFileInfo> cacheFiles;
     GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
     auto completion = std::make_shared<std::promise<TraceRetInfo>>();
@@ -1910,7 +1910,7 @@ HWTEST_F(TraceSourceXattrTest, ReusingSnapshotPreservesConvertedUserSource, Test
 {
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
     ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
-    sleep(3);
+    std::this_thread::sleep_for(std::chrono::seconds(3));
     const auto userRet = DumpTrace(0, 0, "/data/log/hitrace/");
     ASSERT_EQ(userRet.errorCode, SUCCESS);
     CheckNewFilesSource(userRet.outputFiles, "user");
@@ -1930,11 +1930,11 @@ HWTEST_F(TraceSourceXattrTest, ExternalCacheLikeSnapshotKeepsOriginalFile, TestS
 {
     const std::string userFile = directory_ + "/cache_trace_user.sys";
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
-    sleep(2);
+    std::this_thread::sleep_for(std::chrono::seconds(2));
     const auto userRet = DumpTrace(0, 0, userFile);
     ASSERT_EQ(userRet.errorCode, SUCCESS);
     CheckNewFilesSource({userFile}, "");
-    sleep(1);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     const auto systemRet = DumpTrace();
     EXPECT_EQ(systemRet.errorCode, SUCCESS);
     EXPECT_EQ(CloseTrace(), SUCCESS);
