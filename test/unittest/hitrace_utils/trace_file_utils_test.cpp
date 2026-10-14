@@ -25,7 +25,6 @@
 #include <unistd.h>
 #include <vector>
 #include "trace_file_utils.h"
-#include "common_utils.h"
 #include "smart_fd.h"
 
 using namespace testing::ext;

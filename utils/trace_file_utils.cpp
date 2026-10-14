@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/types.h>
+#include <sys/xattr.h>
 #include <securec.h>
 #include <unistd.h>
 
@@ -251,6 +252,20 @@ void GetTraceFileNamesInDir(std::set<std::string>& fileSet, TraceDumpType traceT
             }
     });
     HILOG_INFO(LOG_CORE, "GetTraceFileNamesInDir fileSet size: %{public}d.", static_cast<int>(fileSet.size()));
+}
+
+bool SetTraceSourceXattr(int fd, const std::string& filePath, bool isUserTrace)
+{
+    const auto path = CanonicalizeSpecPath(filePath.c_str());
+    if (path.compare(0, strlen(TRACE_FILE_DEFAULT_DIR), TRACE_FILE_DEFAULT_DIR) != 0) {
+        return true;
+    }
+    const char* value = isUserTrace ? "user" : "system";
+    if (TEMP_FAILURE_RETRY(fsetxattr(fd, "user.trace_source", value, strlen(value), 0)) != 0) {
+        HILOG_ERROR(LOG_CORE, "Set trace source xattr failed, errno %{public}d", errno);
+        return false;
+    }
+    return true;
 }
 
 bool RemoveFile(const std::string& fileName)

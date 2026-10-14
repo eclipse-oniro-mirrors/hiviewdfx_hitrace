@@ -18,15 +18,11 @@
 
 #include <cinttypes>
 #include <string>
-#include <sys/types.h>
-#include <vector>
 
 namespace OHOS {
 namespace HiviewDFX {
 namespace Hitrace {
 std::string CanonicalizeSpecPath(const char* src);
-
-bool SetTraceSourceXattr(int fd, const std::string& filePath, bool isUserTrace);
 
 bool MarkClockSync(const std::string& traceRootPath);
 

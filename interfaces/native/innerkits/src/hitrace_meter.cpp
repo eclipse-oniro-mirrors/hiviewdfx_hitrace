@@ -1504,35 +1504,6 @@ static int CheckFd(int fd)
     return RET_SUCC;
 }
 
-static int PrepareAppTraceFile(std::string& fileName)
-{
-    std::string destFileName = fileName;
-    if (destFileName.empty()) {
-        auto retval = SetAppFileName(destFileName, fileName);
-        if (retval != RET_SUCC) {
-            HILOG_ERROR(LOG_CORE, "set appFileName failed: %{public}d(%{public}s)", errno, strerror(errno));
-            ResetGlobalStatus();
-            return retval;
-        }
-    }
-
-    constexpr mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; // 0644
-    constexpr mode_t openFlag = O_WRONLY | O_CLOEXEC | O_CREAT | O_TRUNC;
-    g_appFd = SmartFd(open(destFileName.c_str(), openFlag, mode));
-    const int ret = CheckFd(g_appFd.GetFd());
-    if (ret != RET_SUCC) {
-        HILOG_ERROR(LOG_CORE, "open destFileName failed: %{public}d(%{public}s)", errno, strerror(errno));
-        ResetGlobalStatus();
-        return ret;
-    }
-    if (!Hitrace::SetTraceSourceXattr(g_appFd.GetFd(), destFileName, true)) {
-        ResetGlobalStatus();
-        (void)remove(destFileName.c_str());
-        return RET_FAILD;
-    }
-    return RET_SUCC;
-}
-
 // For native process, the caller is responsible passing the full path of the fileName.
 // For hap application, StartCaputreAppTrace() fill fileName
 // as /data/app/el2/100/log/$(processname)/trace/$(processname)_$(date)_&(time).trace and return to caller.
@@ -1561,10 +1532,26 @@ int StartCaptureAppTrace(TraceFlag flag, uint64_t tags, uint64_t limitSize, std:
     g_tgid = getprocpid();
     g_appTracePrefix = "";
 
-    ret = PrepareAppTraceFile(fileName);
+    std::string destFileName = fileName;
+    if (destFileName.empty()) {
+        auto retval = SetAppFileName(destFileName, fileName);
+        if (retval != RET_SUCC) {
+            HILOG_ERROR(LOG_CORE, "set appFileName failed: %{public}d(%{public}s)", errno, strerror(errno));
+            ResetGlobalStatus();
+            return retval;
+        }
+    }
+
+    constexpr mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH; // 0644
+    constexpr mode_t openFlag = O_WRONLY | O_CLOEXEC | O_CREAT | O_TRUNC;
+    g_appFd = SmartFd(open(destFileName.c_str(), openFlag, mode));
+    ret = CheckFd(g_appFd.GetFd());
     if (ret != RET_SUCC) {
+        HILOG_ERROR(LOG_CORE, "open destFileName failed: %{public}d(%{public}s)", errno, strerror(errno));
+        ResetGlobalStatus();
         return ret;
     }
+
     ret = InitTraceHead();
     if (ret == RET_SUCC) {
         std::unique_lock<std::mutex> lock(g_tagsChangeMutex);
