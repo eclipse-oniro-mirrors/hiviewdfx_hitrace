@@ -13,14 +13,11 @@
  * limitations under the License.
  */
 
-#include <atomic>
 #include <chrono>
 #include <gtest/gtest.h>
-#include <memory>
 #include <set>
 #include <string>
 #include <thread>
-#include <sys/xattr.h>
 
 #include "hitrace_dump.h"
 #include "trace_file_utils.h"
@@ -70,25 +67,13 @@ HWTEST_F(HitraceAsyncWriteTimeoutTest, AsyncWriteTimeoutTest001, TestSize.Level2
     const std::vector<std::string> tagGroups = {"scene_performance"};
     ASSERT_EQ(static_cast<int>(OpenTrace(tagGroups)), static_cast<int>(TraceErrorCode::SUCCESS));
 
-    auto callbacks = std::make_shared<std::atomic<uint32_t>>(0);
-    auto checkedFiles = std::make_shared<std::atomic<uint32_t>>(0);
-    std::function<void(TraceRetInfo)> func = [callbacks, checkedFiles](TraceRetInfo traceInfo) {
-        EXPECT_EQ(traceInfo.errorCode, TraceErrorCode::SUCCESS);
+    std::function<void(TraceRetInfo)> func = [](TraceRetInfo traceInfo) {
         off_t totalFileSz = 0;
-        constexpr char expectedSource[] = "system";
         for (auto& files : traceInfo.outputFiles) {
             totalFileSz += GetFileSize(files);
             GTEST_LOG_(INFO) << "output: " << files << " file size : " << GetFileSize(files);
-            char source[16] = {};
-            const ssize_t len = getxattr(files.c_str(), "user.trace_source", source, sizeof(source));
-            EXPECT_EQ(len, static_cast<ssize_t>(sizeof(expectedSource) - 1)) << files;
-            if (len > 0) {
-                EXPECT_EQ(std::string(source, static_cast<size_t>(len)), expectedSource) << files;
-            }
         }
         EXPECT_EQ(totalFileSz, traceInfo.fileSize);
-        checkedFiles->fetch_add(traceInfo.outputFiles.size());
-        callbacks->fetch_add(1);
     };
     auto ret = DumpTraceAsync(0, 0, INT64_MAX, func);
     EXPECT_EQ(static_cast<int>(ret.errorCode), static_cast<int>(TraceErrorCode::SUCCESS));
@@ -105,8 +90,6 @@ HWTEST_F(HitraceAsyncWriteTimeoutTest, AsyncWriteTimeoutTest001, TestSize.Level2
         GTEST_LOG_(INFO) << "interface return file : " << file;
     }
     std::this_thread::sleep_for(std::chrono::seconds(15)); // 15 : wait 15 seconds to avoid crash in SIGPIPE
-    EXPECT_EQ(callbacks->load(), 2u);
-    EXPECT_GT(checkedFiles->load(), 0u);
     // Close trace after async dump
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 }

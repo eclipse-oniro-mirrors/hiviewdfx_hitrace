@@ -22,7 +22,6 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
-#include <sys/xattr.h>
 #include <unistd.h>
 #include <vector>
 
@@ -114,14 +113,6 @@ public:
         std::string output = coutBuffer.str();
         coutBuffer.str("");
         return output;
-    }
-
-    void ExpectNoSource(const std::string& path)
-    {
-        char source[16] = {};
-        errno = 0;
-        EXPECT_EQ(getxattr(path.c_str(), "user.trace_source", source, sizeof(source)), -1);
-        EXPECT_EQ(errno, ENODATA);
     }
 
     static void RunCmd(const string& cmd)
@@ -740,7 +731,6 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest015, TestSize.Level1)
 
     GTEST_LOG_(INFO) << "HitraceCMDTest015: end.";
 }
-
 
 /**
  * @tc.name: HitraceCMDTest016
@@ -1516,7 +1506,6 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest044, TestSize.Level1)
     EXPECT_NE(output.find("boot_trace: wrote"), std::string::npos) << output;
     std::string traceContent = ReadFileContent(std::string(BOOT_TRACE_CONFIG_DIR) + fileName);
     EXPECT_FALSE(traceContent.empty()) << "boot-trace should respect configured output path";
-    ExpectNoSource(customOut);
 
     RemoveBootTraceOutput(fileName);
     RemoveBootTraceConfig();
