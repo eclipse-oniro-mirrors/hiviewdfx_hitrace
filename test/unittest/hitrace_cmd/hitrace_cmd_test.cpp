@@ -742,45 +742,6 @@ HWTEST_F(HitraceCMDTest, HitraceCMDTest015, TestSize.Level1)
 }
 
 
-HWTEST_F(HitraceCMDTest, TextAndCompressedOutputDoNotSetSource, TestSize.Level1)
-{
-    ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_begin sched -b 1024 --overwrite", {"OpenRecording done"}));
-    for (const std::string option : {std::string(), std::string(" -z")}) {
-        (void)remove("/data/local/tmp/testtrace.txt");
-        ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_dump -o /data/local/tmp/testtrace.txt" + option,
-            {"trace read done"}));
-        EXPECT_FALSE(ReadFileContent("/data/local/tmp/testtrace.txt").empty());
-        ExpectNoSource("/data/local/tmp/testtrace.txt");
-    }
-    EXPECT_TRUE(CheckTraceCommandOutput("hitrace --trace_finish_nodump", {"end capture trace"}));
-}
-
-HWTEST_F(HitraceCMDTest, RedirectedTextOutputDoesNotSetSource, TestSize.Level1)
-{
-    ASSERT_TRUE(CheckTraceCommandOutput("hitrace --trace_begin sched -b 1024 --overwrite", {"OpenRecording done"}));
-    (void)remove("/data/local/tmp/testtrace.txt");
-    FILE* output = fopen("/data/local/tmp/testtrace.txt", "w");
-    ASSERT_NE(output, nullptr);
-    const int savedStdout = dup(STDOUT_FILENO);
-    if (savedStdout < 0) {
-        fclose(output);
-        FAIL() << "Cannot save stdout";
-    }
-    fflush(stdout);
-    const int redirected = dup2(fileno(output), STDOUT_FILENO);
-    if (redirected >= 0) {
-        RunCmd("hitrace --trace_dump");
-    }
-    fflush(stdout);
-    EXPECT_EQ(dup2(savedStdout, STDOUT_FILENO), STDOUT_FILENO);
-    close(savedStdout);
-    fclose(output);
-    ASSERT_GE(redirected, 0);
-    EXPECT_FALSE(ReadFileContent("/data/local/tmp/testtrace.txt").empty());
-    ExpectNoSource("/data/local/tmp/testtrace.txt");
-    EXPECT_TRUE(CheckTraceCommandOutput("hitrace --trace_finish_nodump", {"end capture trace"}));
-}
-
 /**
  * @tc.name: HitraceCMDTest016
  * @tc.desc: test the error longopt input

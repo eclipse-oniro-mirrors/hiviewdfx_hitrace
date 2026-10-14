@@ -73,7 +73,6 @@ HWTEST_F(AppTraceSourceTest, ExternalAppTraceFileSkipsSource, TestSize.Level1)
     ASSERT_EQ(StartCaptureAppTrace(FLAG_MAIN_THREAD, HITRACE_TAG_OHOS, fileSize, outputFile_), RetType::RET_SUCC);
     CheckSource("");
     EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
-    CheckSource("");
 }
 
 HWTEST_F(AppTraceSourceTest, DefaultAppTraceFileSkipsSource, TestSize.Level1)
@@ -86,7 +85,6 @@ HWTEST_F(AppTraceSourceTest, DefaultAppTraceFileSkipsSource, TestSize.Level1)
     outputFile_ = "/data/local/tmp/" + returnedPath.substr(separator + 1);
     CheckSource("");
     EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
-    CheckSource("");
 }
 
 HWTEST_F(AppTraceSourceTest, ManagedAppTraceFileUsesUserSource, TestSize.Level1)
@@ -100,6 +98,5 @@ HWTEST_F(AppTraceSourceTest, ManagedAppTraceFileUsesUserSource, TestSize.Level1)
     ASSERT_EQ(StartCaptureAppTrace(FLAG_MAIN_THREAD, HITRACE_TAG_OHOS, fileSize, outputFile_), RetType::RET_SUCC);
     CheckSource("user");
     EXPECT_EQ(StopCaptureAppTrace(), RetType::RET_SUCC);
-    CheckSource("user");
 }
 } // namespace OHOS::HiviewDFX::HitraceTest

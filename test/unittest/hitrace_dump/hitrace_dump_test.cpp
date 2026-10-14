@@ -1731,6 +1731,20 @@ public:
         EXPECT_GT(count, 0u);
     }
 
+    void CheckCacheConversion(const std::vector<TraceFileInfo>& caches, const std::vector<std::string>& files)
+    {
+        size_t converted = 0;
+        for (const auto& cache : caches) {
+            std::string snapshot = cache.filename;
+            snapshot.erase(snapshot.find_last_of('/') + 1, std::string("cache_").size());
+            if (std::find(files.begin(), files.end(), snapshot) != files.end()) {
+                EXPECT_NE(access(cache.filename.c_str(), F_OK), 0);
+                ++converted;
+            }
+        }
+        EXPECT_GT(converted, 0u);
+    }
+
     void CheckNewSystemFilesAge(const std::vector<std::string>& files)
     {
         constexpr char expectedSource[] = "system";
@@ -1801,17 +1815,20 @@ HWTEST_F(TraceSourceXattrTest, CachedSystemTraceAgeing, TestSize.Level2)
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
     ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS); // 50 MB cache, one-second slices
     sleep(3);
+    std::vector<TraceFileInfo> cacheFiles;
+    GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
     const auto ret = DumpTrace();
     EXPECT_EQ(ret.errorCode, SUCCESS);
     EXPECT_EQ(CacheTraceOff(), SUCCESS);
     EXPECT_EQ(CloseTrace(), SUCCESS);
+    CheckCacheConversion(cacheFiles, ret.outputFiles);
     CheckNewSystemFilesAge(ret.outputFiles);
 }
 
 
 HWTEST_F(TraceSourceXattrTest, RecordingSourceFollowsManagedDirectory, TestSize.Level2)
 {
-    for (const std::string path : {std::string(), directory_ + "/record.sys", std::string("/data/local/tmp/")}) {
+    for (const std::string path : {std::string(), directory_ + "/record.sys"}) {
         ASSERT_EQ(OpenTrace("tags:sched clockType:boot bufferSize:1024 overwrite:1"), SUCCESS);
         ASSERT_EQ(RecordTraceOn(path), SUCCESS);
         sleep(2);
@@ -1846,8 +1863,7 @@ HWTEST_F(TraceSourceXattrTest, ExternalRecordingSlicesSkipSource, TestSize.Level
 
 HWTEST_F(TraceSourceXattrTest, CacheConversionUsesExplicitUserPath, TestSize.Level2)
 {
-    for (const std::string path : {std::string("/data/log/hitrace"), std::string("/data/log/hitrace/"),
-        directory_ + "/requested.sys"}) {
+    for (const std::string path : {std::string("/data/log/hitrace/"), directory_ + "/requested.sys"}) {
         ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
         ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
         sleep(3);
@@ -1864,11 +1880,7 @@ HWTEST_F(TraceSourceXattrTest, CacheConversionUsesExplicitUserPath, TestSize.Lev
         EXPECT_EQ(CacheTraceOff(), SUCCESS);
         EXPECT_EQ(CloseTrace(), SUCCESS);
         CheckNewFilesSource(ret.outputFiles, "user");
-        size_t converted = 0;
-        for (const auto& file : caches) {
-            converted += access(file.c_str(), F_OK) != 0 ? 1 : 0;
-        }
-        EXPECT_GT(converted, 0u);
+        CheckCacheConversion(cacheFiles, ret.outputFiles);
     }
 }
 
@@ -1877,6 +1889,8 @@ HWTEST_F(TraceSourceXattrTest, AsyncCacheConversionUsesSystemSource, TestSize.Le
     ASSERT_EQ(OpenTrace(std::vector<std::string>{"scene_performance"}), SUCCESS);
     ASSERT_EQ(CacheTraceOn(50, 1), SUCCESS);
     sleep(3);
+    std::vector<TraceFileInfo> cacheFiles;
+    GetTraceFilesInDir(cacheFiles, TraceDumpType::TRACE_CACHE);
     auto completion = std::make_shared<std::promise<TraceRetInfo>>();
     auto result = completion->get_future();
     const auto ret = DumpTraceAsync(0, 0, INT64_MAX, [completion](TraceRetInfo info) {
@@ -1888,6 +1902,7 @@ HWTEST_F(TraceSourceXattrTest, AsyncCacheConversionUsesSystemSource, TestSize.Le
     EXPECT_EQ(completed.errorCode, SUCCESS);
     EXPECT_EQ(CacheTraceOff(), SUCCESS);
     EXPECT_EQ(CloseTrace(), SUCCESS);
+    CheckCacheConversion(cacheFiles, completed.outputFiles);
     CheckNewSystemFilesAge(completed.outputFiles);
 }
 

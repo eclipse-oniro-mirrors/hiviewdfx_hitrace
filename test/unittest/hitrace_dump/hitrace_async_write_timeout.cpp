@@ -71,7 +71,8 @@ HWTEST_F(HitraceAsyncWriteTimeoutTest, AsyncWriteTimeoutTest001, TestSize.Level2
     ASSERT_EQ(static_cast<int>(OpenTrace(tagGroups)), static_cast<int>(TraceErrorCode::SUCCESS));
 
     auto callbacks = std::make_shared<std::atomic<uint32_t>>(0);
-    std::function<void(TraceRetInfo)> func = [callbacks](TraceRetInfo traceInfo) {
+    auto checkedFiles = std::make_shared<std::atomic<uint32_t>>(0);
+    std::function<void(TraceRetInfo)> func = [callbacks, checkedFiles](TraceRetInfo traceInfo) {
         EXPECT_EQ(traceInfo.errorCode, TraceErrorCode::SUCCESS);
         off_t totalFileSz = 0;
         constexpr char expectedSource[] = "system";
@@ -86,6 +87,7 @@ HWTEST_F(HitraceAsyncWriteTimeoutTest, AsyncWriteTimeoutTest001, TestSize.Level2
             }
         }
         EXPECT_EQ(totalFileSz, traceInfo.fileSize);
+        checkedFiles->fetch_add(traceInfo.outputFiles.size());
         callbacks->fetch_add(1);
     };
     auto ret = DumpTraceAsync(0, 0, INT64_MAX, func);
@@ -104,6 +106,7 @@ HWTEST_F(HitraceAsyncWriteTimeoutTest, AsyncWriteTimeoutTest001, TestSize.Level2
     }
     std::this_thread::sleep_for(std::chrono::seconds(15)); // 15 : wait 15 seconds to avoid crash in SIGPIPE
     EXPECT_EQ(callbacks->load(), 2u);
+    EXPECT_GT(checkedFiles->load(), 0u);
     // Close trace after async dump
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 }

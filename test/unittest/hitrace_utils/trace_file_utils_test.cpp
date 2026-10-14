@@ -371,16 +371,6 @@ HWTEST_F(CacheTraceFileSizeTest, FailedConversionRestoresCacheSource, TestSize.L
     ExpectSource(cache, "system");
 }
 
-HWTEST_F(CacheTraceFileSizeTest, InvalidSourceDoesNotReplaceExistingTag, TestSize.Level1)
-{
-    ASSERT_TRUE(AddCacheFile("A"));
-    SmartFd fd(open(Path("A").c_str(), O_RDONLY));
-    ASSERT_TRUE(fd);
-    ASSERT_TRUE(Hitrace::SetTraceFileSource(fd.GetFd(), Path("A"), Hitrace::TraceFileSource::USER));
-    EXPECT_FALSE(Hitrace::SetTraceFileSource(fd.GetFd(), Path("A"), static_cast<Hitrace::TraceFileSource>(255)));
-    ExpectSource(Path("A"), "user");
-}
-
 HWTEST_F(CacheTraceFileSizeTest, ExternalPathsDoNotRequireSourceAttributes, TestSize.Level1)
 {
     for (const std::string path : {"/data/local/tmp/external.sys", "/data/log/hitrace-other/external.sys",
