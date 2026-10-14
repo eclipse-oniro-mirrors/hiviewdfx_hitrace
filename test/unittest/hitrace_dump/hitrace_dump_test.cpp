@@ -985,6 +985,10 @@ HWTEST_F(HitraceDumpTest, DumpForCmdMode_004, TestSize.Level0)
     ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 
+    args = "tags:memory clockType : bufferSize:1024 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
     args = "tags:memory clockType:perf bufferSize:1024 overwrite:1";
     ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
@@ -1024,6 +1028,10 @@ HWTEST_F(HitraceDumpTest, DumpForCmdMode_006, TestSize.Level0)
     ASSERT_EQ(static_cast<int>(ret.errorCode), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_TRUE(ret.outputFiles.size() > 0);
 
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
+    args = "tags : sched clockType : boot bufferSize: 1024 overwrite :1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 }
 
@@ -1638,6 +1646,105 @@ HWTEST_F(HitraceDumpTest, OpenTraceTest004, TestSize.Level1)
     ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
 
     GTEST_LOG_(INFO) << "OpenTraceTest004: end.";
+}
+
+static TraceArgs BuildTraceArgs(uint32_t bufferSize)
+{
+    return TraceArgs {
+        .tags = { "app" },
+        .clockType = "boot",
+        .isOverWrite = true,
+        .bufferSize = bufferSize,
+        .fileSizeLimit = DEFAULT_FILE_SIZE_LIMIT,
+        .appPid = 0,
+        .filterPids = {}
+    };
+}
+
+static bool VerifyClampedBufferSizeApplied()
+{
+    constexpr int maxRetryTimes = 3; // 3 : max retry times
+    constexpr int clampedBufferSizeKb = 256; // 256 KB, minimum buffer size after clamping
+    constexpr int hmAlignedBufferSizeKb = 512; // 512 KB, hm kernel aligns buffer size up to this
+    constexpr int bufferSizeToleranceKb = 4; // 4 KB, tolerance for page header rounding
+    for (int retry = 0; retry < maxRetryTimes; retry++) {
+        std::string args = "tags:app clockType:boot bufferSize:100 overwrite:1";
+        TraceErrorCode openRet = OpenTrace(args);
+        if (openRet != TraceErrorCode::SUCCESS) {
+            GTEST_LOG_(ERROR) << "OpenTrace failed: " << static_cast<int>(openRet);
+            return false;
+        }
+        std::string curBufferSizeStr = ReadFile("buffer_size_kb", GetTraceRootPath());
+        curBufferSizeStr = curBufferSizeStr.substr(0, curBufferSizeStr.find("\n"));
+        int curBufferSize = 0;
+        bool sizeVerified = false;
+        if (StringToInt(curBufferSizeStr, curBufferSize)) {
+            GTEST_LOG_(INFO) << "curBufferSize: " << curBufferSize;
+            // hm kernel aligns buffer size up to 512 KB; linux kernel reads ~258 due to page header
+            sizeVerified = IsHmKernel() ? (curBufferSize == hmAlignedBufferSizeKb)
+                : (std::abs(curBufferSize - clampedBufferSizeKb) < bufferSizeToleranceKb);
+        } else {
+            GTEST_LOG_(WARNING) << "buffer_size_kb unreadable, retry: " << retry;
+        }
+        TraceErrorCode closeRet = CloseTrace();
+        if (closeRet != TraceErrorCode::SUCCESS) {
+            GTEST_LOG_(ERROR) << "CloseTrace failed: " << static_cast<int>(closeRet);
+            return false;
+        }
+        if (sizeVerified) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @tc.name: OpenTraceTest005
+ * @tc.desc: Test OpenTrace with illegal or out of range bufferSize
+ * @tc.type: FUNC
+ */
+HWTEST_F(HitraceDumpTest, OpenTraceTest005, TestSize.Level1)
+{
+    GTEST_LOG_(INFO) << "OpenTraceTest005: start.";
+
+    // non-numeric bufferSize
+    std::string args = "tags:app clockType:boot bufferSize:abc overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::TAG_ERROR));
+
+    // bufferSize less than 256 KB, clamp to min
+    args = "tags:app clockType:boot bufferSize:128 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+    // negative bufferSize, clamp to min
+    args = "tags:app clockType:boot bufferSize:-5 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+    // bufferSize larger than 300 MB, clamp to max
+    args = "tags:app clockType:boot bufferSize:307201 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
+    // bufferSize less than min in TraceArgs, clamp to min
+    TraceArgs traceArgs = BuildTraceArgs(128); // 128 KB
+    ASSERT_EQ(static_cast<int>(OpenTrace(traceArgs)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+    // bufferSize larger than max in TraceArgs, clamp to max
+    traceArgs = BuildTraceArgs(400 * 1024); // 400 MB
+    ASSERT_EQ(static_cast<int>(OpenTrace(traceArgs)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
+    // verify clamped bufferSize is applied; retry to tolerate CpuBufferBalancer racing
+    ASSERT_TRUE(VerifyClampedBufferSizeApplied()) << "clamped buffer size not observed after retries";
+
+    // boundary bufferSize is legal
+    args = "tags:app clockType:boot bufferSize:256 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+    args = "tags:app clockType:boot bufferSize:307200 overwrite:1";
+    ASSERT_EQ(static_cast<int>(OpenTrace(args)), static_cast<int>(TraceErrorCode::SUCCESS));
+    ASSERT_EQ(static_cast<int>(CloseTrace()), static_cast<int>(TraceErrorCode::SUCCESS));
+
+    GTEST_LOG_(INFO) << "OpenTraceTest005: end.";
 }
 
 /**

@@ -88,6 +88,9 @@ constexpr int32_t DEFAULT_FULL_TRACE_LENGTH = 30;
 constexpr uint64_t SNAPSHOT_MIN_REMAINING_SPACE = 300 * 1024 * 1024;     // 300M
 constexpr uint64_t DEFAULT_ASYNC_TRACE_SIZE = 50 * 1024 * 1024;          // 50M
 constexpr int ASYNC_WAIT_EMPTY_LOOP_CNT = 180; // 3 minutes
+constexpr int MIN_BUFFER_SIZE_KB = 256;                                  // 256 KB
+constexpr int MAX_BUFFER_SIZE_KB = 307200;                               // 300 MB
+constexpr int HM_MAX_BUFFER_SIZE_KB = 1024 * 1024;                       // 1024 MB
 
 static volatile sig_atomic_t g_traceDumpTaskPid = -1;
 std::atomic<pid_t> g_asyncWaitTid(-1);
@@ -162,6 +165,26 @@ bool CheckTagGroup(const std::vector<std::string>& tagGroups,
             HILOG_ERROR(LOG_CORE, "CheckTagGroup: %{public}s is not provided.", groupName.c_str());
             return false;
         }
+    }
+    return true;
+}
+
+bool CheckBufferSize(std::string& bufferSize)
+{
+    int bufferSizeKB = 0;
+    if (!StringToInt(bufferSize, bufferSizeKB)) {
+        HILOG_ERROR(LOG_CORE, "CheckBufferSize: illegal bufferSize: %{public}s.", bufferSize.c_str());
+        return false;
+    }
+    int maxBufferSizeKB = IsHmKernel() ? HM_MAX_BUFFER_SIZE_KB : MAX_BUFFER_SIZE_KB;
+    if (bufferSizeKB < MIN_BUFFER_SIZE_KB) {
+        HILOG_WARN(LOG_CORE, "CheckBufferSize: bufferSize %{public}d KB is less than min, set to %{public}d KB.",
+            bufferSizeKB, MIN_BUFFER_SIZE_KB);
+        bufferSize = std::to_string(MIN_BUFFER_SIZE_KB);
+    } else if (bufferSizeKB > maxBufferSizeKB) {
+        HILOG_WARN(LOG_CORE, "CheckBufferSize: bufferSize %{public}d KB is larger than max, set to %{public}d KB.",
+            bufferSizeKB, maxBufferSizeKB);
+        bufferSize = std::to_string(maxBufferSizeKB);
     }
     return true;
 }
@@ -1044,11 +1067,14 @@ bool PreWriteEventsFormat(const std::vector<std::string>& eventFormats)
     return true;
 }
 
-TraceErrorCode HandleTraceOpen(const TraceParams& traceParams,
+TraceErrorCode HandleTraceOpen(TraceParams& traceParams,
                                const std::map<std::string, TraceTag>& allTags,
                                const std::map<std::string, std::vector<std::string>>& tagGroupTable,
                                std::vector<std::string>& tagFmts)
 {
+    if (!CheckBufferSize(traceParams.bufferSize)) {
+        return TraceErrorCode::TAG_ERROR;
+    }
     if (!SetTraceSetting(traceParams, allTags, tagGroupTable, tagFmts)) {
         return TraceErrorCode::FILE_ERROR;
     }
@@ -1129,6 +1155,27 @@ void SetDestTraceTimeAndDuration(uint32_t maxDuration, const uint64_t& utTraceEn
         g_utDestTraceStartTime, g_utDestTraceEndTime);
 }
 
+std::vector<std::string> MergeArgsTokens(const std::vector<std::string>& argList)
+{
+    std::vector<std::string> mergedList;
+    for (const auto& item : argList) {
+        if (mergedList.empty()) {
+            mergedList.push_back(item);
+        } else if (!item.empty() && item.front() == ':') {
+            // A token starting with ':' has an empty key and cannot start a
+            // parameter, so it continues the previous one: "key :value".
+            mergedList.back() += item;
+        } else if (item.find(":") == std::string::npos && !mergedList.back().empty() &&
+                   mergedList.back().back() == ':') {
+            // A token without ':' continues a token ending with ':': "key: value".
+            mergedList.back() += item;
+        } else {
+            mergedList.push_back(item);
+        }
+    }
+    return mergedList;
+}
+
 /**
  * args: tags:tag1,tags2... tagGroups:group1,group2... clockType:boot bufferSize:1024 overwrite:1 output:filename
  * traceParams:  Save the above parameters
@@ -1136,9 +1183,8 @@ void SetDestTraceTimeAndDuration(uint32_t maxDuration, const uint64_t& utTraceEn
 bool ParseArgs(std::string args, TraceParams& traceParams, const std::map<std::string, TraceTag>& allTags,
                const std::map<std::string, std::vector<std::string>>& tagGroupTable)
 {
-    RemoveUnSpace(":", args);
     RemoveUnSpace(",", args);
-    std::vector<std::string> argList = Split(args, ' ');
+    std::vector<std::string> argList = MergeArgsTokens(Split(args, ' '));
     for (const auto& item : argList) {
         size_t pos = item.find(":");
         if (pos == std::string::npos) {

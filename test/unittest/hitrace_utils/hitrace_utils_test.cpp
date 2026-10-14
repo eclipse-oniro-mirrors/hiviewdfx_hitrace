@@ -371,6 +371,10 @@ HWTEST_F(HitraceUtilsTest, StringToIntErrorTest, TestSize.Level2)
     EXPECT_FALSE(OHOS::HiviewDFX::Hitrace::StringToInt(traceParamsStr, paramsInt));
     traceParamsStr = "-2147483649";
     EXPECT_FALSE(OHOS::HiviewDFX::Hitrace::StringToInt(traceParamsStr, paramsInt));
+    traceParamsStr = "9223372036854775808";
+    EXPECT_FALSE(OHOS::HiviewDFX::Hitrace::StringToInt(traceParamsStr, paramsInt));
+    traceParamsStr = "-9223372036854775809";
+    EXPECT_FALSE(OHOS::HiviewDFX::Hitrace::StringToInt(traceParamsStr, paramsInt));
 }
 
 /**
