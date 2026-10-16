@@ -45,13 +45,10 @@ public:
     virtual std::unique_ptr<ITraceCpuRawWrite> GetTraceCpuRawWrite(const uint64_t taskId) = 0;
     virtual const std::string& GetTraceFilePath();
     virtual bool UpdateTraceFile(const std::string& traceFilePath);
-    bool HasTraceSourceError() const;
 protected:
-    bool PrepareTraceFile();
     SmartFd traceFileFd_;
     std::string traceFilePath_;
     bool isUserTrace_;
-    bool hasTraceSourceError_ = false;
 };
 
 class TraceSourceLinuxFactory : public ITraceSourceFactory {

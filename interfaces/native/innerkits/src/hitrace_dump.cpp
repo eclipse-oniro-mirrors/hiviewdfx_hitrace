@@ -436,9 +436,10 @@ void RestoreTimeIntervalBoundary()
     g_traceEndTime = std::numeric_limits<uint64_t>::max();
 }
 
-void GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
+int32_t GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
     std::vector<TraceFileInfo>& fileVec, std::vector<TraceFileInfo>& targetFiles)
 {
+    int32_t coverDuration = 0;
     uint64_t utTargetStartTimeMs = inputTraceStartTime * S_TO_MS;
     uint64_t utTargetEndTimeMs = inputTraceEndTime * S_TO_MS;
     for (const auto& it : fileVec) {
@@ -453,8 +454,11 @@ void GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t& in
             HILOG_INFO(LOG_CORE, "GetTraceFileFromVec: %{public}s, [%{public}" PRIu64 ", %{public}" PRIu64 "].",
                 fileName.c_str(), it.traceStartTime, it.traceEndTime);
             targetFiles.push_back(it);
+            coverDuration += static_cast<int32_t>(std::min(it.traceEndTime, utTargetEndTimeMs + DURATION_TOLERANCE) -
+                std::max(it.traceStartTime, utTargetStartTimeMs - DURATION_TOLERANCE));
         }
     }
+    return coverDuration;
 }
 
 void SearchTraceFiles(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
@@ -463,27 +467,22 @@ void SearchTraceFiles(const uint64_t& inputTraceStartTime, const uint64_t& input
     uint64_t curTime = GetCurUnixTimeMs();
     HILOG_INFO(LOG_CORE, "current time: %{public}" PRIu64 ", target trace time: [%{public}" PRIu64 ", %{public}"
         PRIu64 "].", curTime, inputTraceStartTime, inputTraceEndTime);
+    int32_t coverDuration = 0;
     std::vector<TraceFileInfo> targetFiles;
-    GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, g_traceFileVec, targetFiles);
+    coverDuration += GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, g_traceFileVec, targetFiles);
     const size_t cacheStart = targetFiles.size();
     auto inputCacheFiles = TraceDumpExecutor::GetInstance().GetCacheTraceFiles();
-    GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, inputCacheFiles, targetFiles);
+    coverDuration += GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, inputCacheFiles, targetFiles);
     for (size_t i = 0; i < targetFiles.size(); ++i) {
         auto& file = targetFiles[i];
         if (i >= cacheStart) {
-            const auto snapshot = RenameCacheFile(file.filename, isUserTrace);
-            if (snapshot.empty()) {
-                continue;
-            }
-            file.filename = snapshot;
+            file.filename = RenameCacheFile(file.filename, isUserTrace);
             g_traceFileVec.push_back(file);
         }
         traceRetInfo.outputFiles.push_back(file.filename);
         traceRetInfo.fileSize += file.fileSize;
-        traceRetInfo.coverDuration += static_cast<int32_t>(
-            std::min(file.traceEndTime, inputTraceEndTime * S_TO_MS + DURATION_TOLERANCE) -
-            std::max(file.traceStartTime, inputTraceStartTime * S_TO_MS - DURATION_TOLERANCE));
     }
+    traceRetInfo.coverDuration += coverDuration;
 }
 
 void ProcessCacheTask()

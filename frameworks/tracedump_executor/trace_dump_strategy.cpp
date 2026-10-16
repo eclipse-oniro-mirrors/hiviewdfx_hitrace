@@ -100,10 +100,6 @@ TraceDumpRet ITraceDumpStrategy::Execute(std::shared_ptr<ITraceSourceFactory> tr
 bool ITraceDumpStrategy::ProcessTraceDumpIteration(std::shared_ptr<ITraceSourceFactory> traceSourceFactory,
     const TraceDumpRequest& request, TraceDumpRet& ret, int& newFileCount)
 {
-    if (traceSourceFactory->HasTraceSourceError()) {
-        ret = {TraceErrorCode::WRITE_TRACE_INFO_ERROR, "", 0, 0, 0};
-        return false;
-    }
     TraceContentPtr traceContentPtr;
     if (!InitializeTraceContent(traceSourceFactory, request, traceContentPtr)) {
         HILOG_ERROR(LOG_CORE,

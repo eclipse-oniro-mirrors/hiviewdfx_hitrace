@@ -67,30 +67,12 @@ ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath, bool 
         HILOG_ERROR(LOG_CORE, "TraceSourceFactory: open %{public}s failed.", traceFilePath.c_str());
         return;
     }
-    if (!PrepareTraceFile()) {
-        HILOG_ERROR(LOG_CORE, "TraceSourceFactory: prepare %{public}s failed.", traceFilePath.c_str());
-    }
+    SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
 }
 
 const std::string& ITraceSourceFactory::GetTraceFilePath()
 {
     return traceFilePath_;
-}
-
-bool ITraceSourceFactory::HasTraceSourceError() const
-{
-    return hasTraceSourceError_;
-}
-
-bool ITraceSourceFactory::PrepareTraceFile()
-{
-    hasTraceSourceError_ = !SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
-    if (hasTraceSourceError_) {
-        traceFileFd_.Reset();
-        RemoveFile(CanonicalizeSpecPath(traceFilePath_.c_str()));
-        return false;
-    }
-    return true;
 }
 
 bool ITraceSourceFactory::UpdateTraceFile(const std::string& traceFilePath)
@@ -99,7 +81,8 @@ bool ITraceSourceFactory::UpdateTraceFile(const std::string& traceFilePath)
         return false;
     }
     traceFilePath_ = traceFilePath;
-    return PrepareTraceFile();
+    SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
+    return true;
 }
 
 TraceSourceLinuxFactory::TraceSourceLinuxFactory(const std::string& traceFilePath, bool isUserTrace)
