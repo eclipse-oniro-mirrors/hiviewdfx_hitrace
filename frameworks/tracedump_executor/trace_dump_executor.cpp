@@ -154,7 +154,7 @@ TraceDumpRet TraceDumpExecutor::DumpTrace(const TraceDumpParam& param, const std
 {
     MarkClockSync(Hitrace::GetTraceRootPath());
     std::string traceFile = GenerateTraceFileName(param.type, outputPath);
-    return DumpTraceInner(param, traceFile);
+    return DumpTraceInner(param, traceFile, !outputPath.empty());
 }
 
 std::vector<TraceFileInfo> TraceDumpExecutor::GetCacheTraceFiles()
@@ -434,9 +434,9 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
     }
     std::shared_ptr<ITraceSourceFactory> traceSourceFactory = nullptr;
     if (IsHmKernel()) {
-        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, param.type != TRACE_CACHE);
     } else {
-        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, param.type != TRACE_CACHE);
     }
 
     std::lock_guard<std::mutex> lck(traceFileMutex_);
@@ -473,7 +473,8 @@ bool TraceDumpExecutor::DoDumpTraceLoop(const TraceDumpParam& param, std::string
     return true;
 }
 
-TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile)
+TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, const std::string& traceFile,
+    bool isUserTrace)
 {
     std::shared_ptr<ITraceSourceFactory> traceSourceFactory = nullptr;
     if (Hitrace::GetTraceRootPath().empty()) {
@@ -481,9 +482,9 @@ TraceDumpRet TraceDumpExecutor::DumpTraceInner(const TraceDumpParam& param, cons
         return { TraceErrorCode::TRACE_NOT_SUPPORTED, "", 0, 0, 0 };
     }
     if (IsHmKernel()) {
-        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceHMFactory>(traceFile, isUserTrace);
     } else {
-        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile);
+        traceSourceFactory = std::make_shared<TraceSourceLinuxFactory>(traceFile, isUserTrace);
     }
 
     TraceDumpRequest request = {

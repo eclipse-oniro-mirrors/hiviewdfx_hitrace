@@ -49,6 +49,7 @@ struct TimestampRange {
 void GetTraceFilesInDir(std::vector<TraceFileInfo>& fileList, TraceDumpType traceType);
 void GetTraceFileNamesInDir(std::set<std::string>& fileSet, TraceDumpType traceType);
 bool RemoveFile(const std::string& fileName);
+void SetTraceSourceXattr(int fd, const std::string& filePath, bool isUserTrace);
 bool IsDefaultTraceDirectory(const std::string& path);
 bool IsWritable(const std::string& fileName);
 bool IsWritableDir(const std::string& fileName);
@@ -62,7 +63,7 @@ void ClearCacheTraceFileBySize(std::vector<TraceFileInfo>& cacheFileVec, const u
 off_t GetFileSize(const std::string& filePath);
 uint64_t GetCurUnixTimeMs();
 void RefreshTraceVec(std::vector<TraceFileInfo>& traceVec, const TraceDumpType traceType);
-std::string RenameCacheFile(const std::string& cacheFile);
+std::string RenameCacheFile(const std::string& cacheFile, bool isUserTrace);
 bool SetFileInfo(const bool isFileExist, const std::string outPath, const TimestampRange& timestampRange,
     TraceFileInfo& traceFileInfo, const std::string& outputPath = "");
 

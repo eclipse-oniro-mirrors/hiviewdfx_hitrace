@@ -15,6 +15,7 @@
 
 #include "trace_file_utils.h"
 
+#include <cerrno>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
@@ -25,6 +26,7 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/types.h>
+#include <sys/xattr.h>
 #include <securec.h>
 #include <unistd.h>
 
@@ -252,6 +254,18 @@ void GetTraceFileNamesInDir(std::set<std::string>& fileSet, TraceDumpType traceT
     HILOG_INFO(LOG_CORE, "GetTraceFileNamesInDir fileSet size: %{public}d.", static_cast<int>(fileSet.size()));
 }
 
+void SetTraceSourceXattr(int fd, const std::string& filePath, bool isUserTrace)
+{
+    const auto path = CanonicalizeSpecPath(filePath.c_str());
+    if (path.compare(0, strlen(TRACE_FILE_DEFAULT_DIR), TRACE_FILE_DEFAULT_DIR) != 0) {
+        return;
+    }
+    const char* value = isUserTrace ? "user" : "system";
+    if (TEMP_FAILURE_RETRY(fsetxattr(fd, "user.trace_source", value, strlen(value), 0)) != 0) {
+        HILOG_ERROR(LOG_CORE, "Set trace source xattr failed, errno %{public}d", errno);
+    }
+}
+
 bool RemoveFile(const std::string& fileName)
 {
     bool result = false;
@@ -440,26 +454,29 @@ void ClearCacheTraceFileBySize(std::vector<TraceFileInfo>& cacheFileVec, const u
         return;
     }
     int64_t totalCacheFileSize = 0;
-    for (size_t i = 0; i < cacheFileVec.size(); ++i) {
-        totalCacheFileSize += cacheFileVec[i].fileSize;
-    }
-    while (totalCacheFileSize > static_cast<int64_t>(fileSizeLimit)) {
-        if (cacheFileVec.empty()) {
-            HILOG_INFO(LOG_CORE, "ClearCacheTraceFileBySize: cacheFileVec is empty.");
-            return;
+    for (auto it = cacheFileVec.begin(); it != cacheFileVec.end();) {
+        if (access(it->filename.c_str(), F_OK) != 0 && errno == ENOENT) {
+            it = cacheFileVec.erase(it);
+            continue;
         }
-        auto it = cacheFileVec.begin();
+        totalCacheFileSize += it->fileSize;
+        ++it;
+    }
+    auto it = cacheFileVec.begin();
+    while (it != cacheFileVec.end() && totalCacheFileSize > static_cast<int64_t>(fileSizeLimit)) {
         HILOG_INFO(LOG_CORE, "filename:%{public}s, fileSizeLimit:(%{public}" PRId64
             "), totalCacheFileSize:(%{public}" PRId64 "), fileSize:(%{public}" PRId64 ").",
             (*it).filename.c_str(), fileSizeLimit, totalCacheFileSize, (*it).fileSize);
         if (remove((*it).filename.c_str()) == 0) {
-            totalCacheFileSize = totalCacheFileSize - (*it).fileSize;
             HILOG_INFO(LOG_CORE, "ClearCacheTraceFileBySize: delete first %{public}s success.", (*it).filename.c_str());
-        } else {
+        } else if (errno != ENOENT) {
             HILOG_ERROR(LOG_CORE, "ClearCacheTraceFileBySize: delete first: %{public}s failed, errno: %{public}d",
                 (*it).filename.c_str(), errno);
+            ++it;
+            continue;
         }
-        cacheFileVec.erase(it);
+        totalCacheFileSize -= it->fileSize;
+        it = cacheFileVec.erase(it);
     }
 }
 
@@ -505,7 +522,7 @@ void RefreshTraceVec(std::vector<TraceFileInfo>& traceVec, const TraceDumpType t
     }
 }
 
-std::string RenameCacheFile(const std::string& cacheFile)
+std::string RenameCacheFile(const std::string& cacheFile, bool isUserTrace)
 {
     std::string fileName = cacheFile.substr(cacheFile.find_last_of("/") + 1);
     std::string::size_type pos = fileName.find(CACHE_FILE_PREFIX);
@@ -520,6 +537,12 @@ std::string RenameCacheFile(const std::string& cacheFile)
         HILOG_ERROR(LOG_CORE, "rename %{public}s to %{public}s failed, errno: %{public}d.",
             cacheFile.c_str(), newFilePath.c_str(), errno);
         return cacheFile;
+    }
+    SmartFd fd(open(newFilePath.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+    if (!fd) {
+        HILOG_ERROR(LOG_CORE, "Open trace for source tagging failed, errno %{public}d", errno);
+    } else {
+        SetTraceSourceXattr(fd.GetFd(), newFilePath, isUserTrace);
     }
     HILOG_INFO(LOG_CORE, "rename %{public}s to %{public}s success.", cacheFile.c_str(), newFilePath.c_str());
     return newFilePath;

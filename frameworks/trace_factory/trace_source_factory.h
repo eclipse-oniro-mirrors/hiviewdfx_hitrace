@@ -31,7 +31,7 @@ namespace Hitrace {
  */
 class ITraceSourceFactory {
 public:
-    explicit ITraceSourceFactory(const std::string& traceFilePath);
+    explicit ITraceSourceFactory(const std::string& traceFilePath, bool isUserTrace = false);
     virtual ~ITraceSourceFactory() = default;
     virtual std::unique_ptr<ITraceFileHdrContent> GetTraceFileHeader() = 0;
     virtual std::unique_ptr<TraceBaseInfoContent> GetTraceBaseInfo() = 0;
@@ -48,12 +48,13 @@ public:
 protected:
     SmartFd traceFileFd_;
     std::string traceFilePath_;
+    bool isUserTrace_;
 };
 
 class TraceSourceLinuxFactory : public ITraceSourceFactory {
 public:
     TraceSourceLinuxFactory() = delete;
-    explicit TraceSourceLinuxFactory(const std::string& traceFilePath);
+    explicit TraceSourceLinuxFactory(const std::string& traceFilePath, bool isUserTrace = false);
     ~TraceSourceLinuxFactory() override = default;
 
     std::unique_ptr<ITraceFileHdrContent> GetTraceFileHeader() override;
@@ -71,7 +72,7 @@ public:
 class TraceSourceHMFactory : public ITraceSourceFactory {
 public:
     TraceSourceHMFactory() = delete;
-    explicit TraceSourceHMFactory(const std::string& traceFilePath);
+    explicit TraceSourceHMFactory(const std::string& traceFilePath, bool isUserTrace = false);
     ~TraceSourceHMFactory() override = default;
 
     std::unique_ptr<ITraceFileHdrContent> GetTraceFileHeader() override;

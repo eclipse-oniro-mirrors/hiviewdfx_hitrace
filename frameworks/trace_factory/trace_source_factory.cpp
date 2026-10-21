@@ -15,12 +15,14 @@
 
 #include "trace_source_factory.h"
 
+#include <cerrno>
 #include <fcntl.h>
 #include <hilog/log.h>
 #include <string>
 #include <unistd.h>
 
 #include "common_utils.h"
+#include "trace_file_utils.h"
 
 namespace OHOS {
 namespace HiviewDFX {
@@ -52,7 +54,8 @@ bool UpdateFileFd(const std::string& traceFile, SmartFd& fd)
 }
 }
 
-ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath) : traceFilePath_(traceFilePath)
+ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath, bool isUserTrace)
+    : traceFilePath_(traceFilePath), isUserTrace_(isUserTrace)
 {
     if (traceFilePath.empty()) {
         return;
@@ -62,7 +65,9 @@ ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath) : tra
     traceFileFd_ = SmartFd(open(path.c_str(), O_CREAT | O_WRONLY | O_TRUNC | O_UNCACHE | O_NOFOLLOW, mode));
     if (!traceFileFd_) {
         HILOG_ERROR(LOG_CORE, "TraceSourceFactory: open %{public}s failed.", traceFilePath.c_str());
+        return;
     }
+    SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
 }
 
 const std::string& ITraceSourceFactory::GetTraceFilePath()
@@ -76,11 +81,12 @@ bool ITraceSourceFactory::UpdateTraceFile(const std::string& traceFilePath)
         return false;
     }
     traceFilePath_ = traceFilePath;
+    SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
     return true;
 }
 
-TraceSourceLinuxFactory::TraceSourceLinuxFactory(const std::string& traceFilePath)
-    : ITraceSourceFactory(traceFilePath) {}
+TraceSourceLinuxFactory::TraceSourceLinuxFactory(const std::string& traceFilePath, bool isUserTrace)
+    : ITraceSourceFactory(traceFilePath, isUserTrace) {}
 
 std::unique_ptr<ITraceFileHdrContent> TraceSourceLinuxFactory::GetTraceFileHeader()
 {
@@ -132,7 +138,8 @@ std::unique_ptr<ITraceCpuRawWrite> TraceSourceLinuxFactory::GetTraceCpuRawWrite(
     return std::make_unique<TraceCpuRawWriteLinux>(traceFileFd_.GetFd(), traceFilePath_, taskId);
 }
 
-TraceSourceHMFactory::TraceSourceHMFactory(const std::string& traceFilePath) : ITraceSourceFactory(traceFilePath) {}
+TraceSourceHMFactory::TraceSourceHMFactory(const std::string& traceFilePath, bool isUserTrace)
+    : ITraceSourceFactory(traceFilePath, isUserTrace) {}
 
 std::unique_ptr<ITraceFileHdrContent> TraceSourceHMFactory::GetTraceFileHeader()
 {

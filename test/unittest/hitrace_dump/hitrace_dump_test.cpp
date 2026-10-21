@@ -1866,7 +1866,8 @@ HWTEST_F(TraceSourceXattrTest, SourceTag001, TestSize.Level2)
     bool userFileExists = access(userPath.c_str(), F_OK) == 0;
     EXPECT_TRUE(userFileExists);
     if (userFileExists) {
-        checkSource(userPath, "user");
+        EXPECT_EQ(TEMP_FAILURE_RETRY(getxattr(userPath.c_str(), "user.trace_source", nullptr, 0)), -1);
+        EXPECT_EQ(errno, ENODATA);
         EXPECT_EQ(remove(userPath.c_str()), 0);
     }
 }

@@ -485,7 +485,7 @@ int32_t GetTraceFileFromVec(const uint64_t& inputTraceStartTime, const uint64_t&
 }
 
 void SearchTraceFiles(const uint64_t& inputTraceStartTime, const uint64_t& inputTraceEndTime,
-    TraceRetInfo& traceRetInfo)
+    TraceRetInfo& traceRetInfo, bool isUserTrace)
 {
     uint64_t curTime = GetCurUnixTimeMs();
     HILOG_INFO(LOG_CORE, "current time: %{public}" PRIu64 ", target trace time: [%{public}" PRIu64 ", %{public}"
@@ -493,11 +493,13 @@ void SearchTraceFiles(const uint64_t& inputTraceStartTime, const uint64_t& input
     int32_t coverDuration = 0;
     std::vector<TraceFileInfo> targetFiles;
     coverDuration += GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, g_traceFileVec, targetFiles);
+    const size_t cacheStart = targetFiles.size();
     auto inputCacheFiles = TraceDumpExecutor::GetInstance().GetCacheTraceFiles();
     coverDuration += GetTraceFileFromVec(inputTraceStartTime, inputTraceEndTime, inputCacheFiles, targetFiles);
-    for (auto& file : targetFiles) {
-        if (file.filename.find(CACHE_FILE_PREFIX) != std::string::npos) {
-            file.filename = RenameCacheFile(file.filename);
+    for (size_t i = 0; i < targetFiles.size(); ++i) {
+        auto& file = targetFiles[i];
+        if (i >= cacheStart) {
+            file.filename = RenameCacheFile(file.filename, isUserTrace);
             g_traceFileVec.push_back(file);
         }
         traceRetInfo.outputFiles.push_back(file.filename);
@@ -652,21 +654,13 @@ bool EpollWaitforChildProcess(pid_t& pid, int pipefd, std::string& reOutPath)
     return true;
 }
 
-bool SetTraceSourceXattr(const std::string& fileName, bool isUserTrace)
-{
-    constexpr char attrName[] = "user.trace_source";
-    const char* source = isUserTrace ? "user" : "system";
-    if (TEMP_FAILURE_RETRY(setxattr(fileName.c_str(), attrName, source, strlen(source), 0)) != 0) {
-        HILOG_ERROR(LOG_CORE, "Set trace source xattr failed, errno %{public}d", errno);
-        return false;
-    }
-    return true;
-}
-
 TraceErrorCode HandleDumpResult(std::string& reOutPath, TraceRetInfo& traceRetInfo, const std::string& outputPath,
     bool isUserTrace)
 {
-    SearchTraceFiles(g_utDestTraceStartTime, g_utDestTraceEndTime, traceRetInfo);
+    const bool isManagedTrace = outputPath.empty() || IsDefaultTraceDirectory(outputPath);
+    if (isManagedTrace) {
+        SearchTraceFiles(g_utDestTraceStartTime, g_utDestTraceEndTime, traceRetInfo, isUserTrace);
+    }
     if (g_dumpStatus) {
         if (remove(reOutPath.c_str()) == 0) {
             HILOG_INFO(LOG_CORE, "Delete outpath:%{public}s success.", reOutPath.c_str());
@@ -684,11 +678,9 @@ TraceErrorCode HandleDumpResult(std::string& reOutPath, TraceRetInfo& traceRetIn
             HILOG_ERROR(LOG_CORE, "SetFileInfo: set %{public}s info failed.", reOutPath.c_str());
             RemoveFile(reOutPath);
         } else { // success
-            if (!SetTraceSourceXattr(traceFileInfo.filename, isUserTrace)) {
-                RemoveFile(traceFileInfo.filename);
-                return TraceErrorCode::WRITE_TRACE_INFO_ERROR;
+            if (isManagedTrace) {
+                g_traceFileVec.push_back(traceFileInfo);
             }
-            g_traceFileVec.push_back(traceFileInfo);
             traceRetInfo.outputFiles.push_back(traceFileInfo.filename);
             traceRetInfo.coverDuration +=
                 static_cast<int32_t>(traceFileInfo.traceEndTime - traceFileInfo.traceStartTime);
@@ -704,7 +696,7 @@ TraceErrorCode HandleDumpResult(std::string& reOutPath, TraceRetInfo& traceRetIn
 
 void HandleAsyncDumpResult(TraceDumpTask& task, TraceRetInfo& traceRetInfo)
 {
-    SearchTraceFiles(g_utDestTraceStartTime, g_utDestTraceEndTime, traceRetInfo);
+    SearchTraceFiles(g_utDestTraceStartTime, g_utDestTraceEndTime, traceRetInfo, false);
     TraceFileInfo traceFileInfo;
     if (task.code == TraceErrorCode::SUCCESS) {
         TimestampRange range{g_firstPageTimestamp, g_lastPageTimestamp};
@@ -1253,10 +1245,10 @@ void SetTotalFileSizeLimitAndSliceMaxDuration(const uint64_t& totalFileSize, con
     }
 }
 
-void GetFileInCache(TraceRetInfo& traceRetInfo)
+void GetFileInCache(TraceRetInfo& traceRetInfo, bool isUserTrace)
 {
     HILOG_INFO(LOG_CORE, "DumpTrace: Trace is caching, get cache file.");
-    SearchTraceFiles(g_utDestTraceStartTime, g_utDestTraceEndTime, traceRetInfo);
+    SearchTraceFiles(g_utDestTraceStartTime, g_utDestTraceEndTime, traceRetInfo, isUserTrace);
     if (traceRetInfo.outputFiles.empty()) {
         HILOG_ERROR(LOG_CORE, "DumpTrace: Trace is caching, but failed to retrieve target trace file.");
         traceRetInfo.errorCode = OUT_OF_TIME;
@@ -1657,14 +1649,14 @@ TraceRetInfo DumpTrace(uint32_t maxDuration, uint64_t utTraceEndTime, const std:
 {
     std::lock_guard<std::mutex> lock(g_traceMutex);
     TraceRetInfo ret;
-    const bool isUserTrace = !outputPath.empty();
+    const bool isManagedTrace = outputPath.empty() || IsDefaultTraceDirectory(outputPath);
     TraceErrorCode bootGate = SUCCESS;
     if (BootTraceArbShouldReturnLocked(false, &bootGate)) {
         ret.errorCode = bootGate;
         ret.mode = g_traceMode;
         return ret;
     }
-    if (isUserTrace && !IsDefaultTraceDirectory(outputPath) && !IsWritable(outputPath)) {
+    if (!isManagedTrace && !IsWritable(outputPath)) {
         ret.errorCode = FILE_ERROR;
         return ret;
     }
@@ -1672,14 +1664,20 @@ TraceRetInfo DumpTrace(uint32_t maxDuration, uint64_t utTraceEndTime, const std:
     if (!CheckTraceDumpStatus(maxDuration, utTraceEndTime, ret)) {
         return ret;
     }
-    FileAgeingUtils::HandleAgeing(g_traceFileVec, TraceDumpType::TRACE_SNAPSHOT);
+    if (IsCacheOn() && !isManagedTrace) {
+        ret.errorCode = WRONG_TRACE_MODE;
+        return ret;
+    }
+    if (isManagedTrace) {
+        FileAgeingUtils::HandleAgeing(g_traceFileVec, TraceDumpType::TRACE_SNAPSHOT);
+    }
     HILOG_INFO(LOG_CORE, "DumpTrace start, target duration is %{public}d, target endtime is (%{public}" PRIu64 ").",
         maxDuration, utTraceEndTime);
     SetDestTraceTimeAndDuration(maxDuration, utTraceEndTime);
     int32_t committedDuration =
         std::min(DEFAULT_FULL_TRACE_LENGTH, static_cast<int32_t>(g_utDestTraceEndTime - g_utDestTraceStartTime));
     if (UNEXPECTANTLY(IsCacheOn())) {
-        GetFileInCache(ret);
+        GetFileInCache(ret, !outputPath.empty());
         LoadDumpRet(ret, committedDuration);
         SanitizeRetInfo(ret);
         return ret;
@@ -1692,7 +1690,7 @@ TraceRetInfo DumpTrace(uint32_t maxDuration, uint64_t utTraceEndTime, const std:
     g_firstPageTimestamp = UINT64_MAX;
     g_lastPageTimestamp = 0;
 
-    ret.errorCode = ProcessDumpSync(ret, outputPath, isUserTrace);
+    ret.errorCode = ProcessDumpSync(ret, outputPath, !outputPath.empty());
     LoadDumpRet(ret, committedDuration);
     RestoreTimeIntervalBoundary();
     SanitizeRetInfo(ret);
@@ -1734,7 +1732,7 @@ TraceRetInfo DumpTraceAsync(uint32_t maxDuration, uint64_t utTraceEndTime, int64
     int32_t committedDuration =
         std::min(DEFAULT_FULL_TRACE_LENGTH, static_cast<int32_t>(g_utDestTraceEndTime - g_utDestTraceStartTime));
     if (UNEXPECTANTLY(IsCacheOn())) {
-        GetFileInCache(ret);
+        GetFileInCache(ret, false);
         LoadDumpRet(ret, committedDuration);
         SanitizeRetInfo(ret);
         replyIfNeeded(ret);
