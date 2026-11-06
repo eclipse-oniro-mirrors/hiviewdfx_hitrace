@@ -254,11 +254,20 @@ void GetTraceFileNamesInDir(std::set<std::string>& fileSet, TraceDumpType traceT
     HILOG_INFO(LOG_CORE, "GetTraceFileNamesInDir fileSet size: %{public}d.", static_cast<int>(fileSet.size()));
 }
 
-void SetTraceSourceXattr(int fd, const std::string& filePath, bool isUserTrace)
+void SetTraceSourceXattr(const std::string& filePath, bool isUserTrace, int fd)
 {
     const auto path = CanonicalizeSpecPath(filePath.c_str());
     if (path.compare(0, strlen(TRACE_FILE_DEFAULT_DIR), TRACE_FILE_DEFAULT_DIR) != 0) {
         return;
+    }
+    SmartFd fdGuard;
+    if (fd < 0) {
+        fdGuard = SmartFd(open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
+        if (!fdGuard) {
+            HILOG_ERROR(LOG_CORE, "Open trace for source tagging failed, errno %{public}d", errno);
+            return;
+        }
+        fd = fdGuard.GetFd();
     }
     const char* value = isUserTrace ? "user" : "system";
     if (TEMP_FAILURE_RETRY(fsetxattr(fd, "user.trace_source", value, strlen(value), 0)) != 0) {
@@ -538,12 +547,7 @@ std::string RenameCacheFile(const std::string& cacheFile, bool isUserTrace)
             cacheFile.c_str(), newFilePath.c_str(), errno);
         return cacheFile;
     }
-    SmartFd fd(open(newFilePath.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK));
-    if (!fd) {
-        HILOG_ERROR(LOG_CORE, "Open trace for source tagging failed, errno %{public}d", errno);
-    } else {
-        SetTraceSourceXattr(fd.GetFd(), newFilePath, isUserTrace);
-    }
+    SetTraceSourceXattr(newFilePath, isUserTrace);
     HILOG_INFO(LOG_CORE, "rename %{public}s to %{public}s success.", cacheFile.c_str(), newFilePath.c_str());
     return newFilePath;
 }

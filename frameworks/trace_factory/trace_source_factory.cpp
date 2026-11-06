@@ -67,7 +67,7 @@ ITraceSourceFactory::ITraceSourceFactory(const std::string& traceFilePath, bool 
         HILOG_ERROR(LOG_CORE, "TraceSourceFactory: open %{public}s failed.", traceFilePath.c_str());
         return;
     }
-    SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
+    SetTraceSourceXattr(traceFilePath_, isUserTrace_, traceFileFd_.GetFd());
 }
 
 const std::string& ITraceSourceFactory::GetTraceFilePath()
@@ -81,7 +81,7 @@ bool ITraceSourceFactory::UpdateTraceFile(const std::string& traceFilePath)
         return false;
     }
     traceFilePath_ = traceFilePath;
-    SetTraceSourceXattr(traceFileFd_.GetFd(), traceFilePath_, isUserTrace_);
+    SetTraceSourceXattr(traceFilePath_, isUserTrace_, traceFileFd_.GetFd());
     return true;
 }
 
