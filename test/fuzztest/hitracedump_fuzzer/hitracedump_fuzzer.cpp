@@ -147,6 +147,26 @@ void HitraceDumpAsyncTest(const uint8_t* data, size_t size)
     (void)CloseTrace();
     std::cout << "trace mode : " << GetTraceMode() << std::endl;
 }
+
+void HitraceDumpAgeTraceTest(const uint8_t* data, size_t size)
+{
+    uint64_t traceTags = 0;
+    uint32_t retentionSecond = 0;
+    if (size < sizeof(traceTags) + sizeof(retentionSecond)) {
+        return;
+    }
+    StreamToValueInfo(data, traceTags);
+    StreamToValueInfo(data, retentionSecond);
+    std::vector<std::string> hitraceTags = { "sched", "freq", "idle", "disk" };
+    GenerateTagVec(traceTags, hitraceTags);
+    std::cout << "trace mode : " << GetTraceMode() << std::endl;
+    (void)OpenTrace(hitraceTags);
+    sleep(1);
+    (void)DumpTrace();
+    std::cout << "AgeTraceFile ret: " << AgeTraceFile(retentionSecond) << std::endl;
+    (void)CloseTrace();
+    std::cout << "trace mode : " << GetTraceMode() << std::endl;
+}
 } // namespace Hitrace
 } // namespace HiviewDFX
 } // namespace OHOS
@@ -164,5 +184,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
     OHOS::HiviewDFX::Hitrace::HitraceDumpServiceModeTest(data, size);
     OHOS::HiviewDFX::Hitrace::HitraceDumpTest(data, size);
     OHOS::HiviewDFX::Hitrace::HitraceDumpAsyncTest(data, size);
+    OHOS::HiviewDFX::Hitrace::HitraceDumpAgeTraceTest(data, size);
     return 0;
 }

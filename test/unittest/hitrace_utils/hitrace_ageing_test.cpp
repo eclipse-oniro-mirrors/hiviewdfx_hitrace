@@ -464,6 +464,43 @@ HWTEST_F(HitraceAgeingTest, HandleAgeing_008, TestSize.Level1)
     }
 }
 
+/**
+ * @tc.name: AgeTraceFiles_001
+ * @tc.desc: test AgeTraceFiles deletes expired system source files and prunes file list
+ * @tc.type: FUNC
+ */
+HWTEST_F(HitraceAgeingTest, AgeTraceFiles_001, TestSize.Level1)
+{
+    ClearFile();
+    const std::string sysFile = HitTraceDir() + "trace_age_sys.ut";
+    const std::string usrFile = HitTraceDir() + "trace_age_usr.ut";
+    const std::string noneFile = HitTraceDir() + "trace_age_none.ut";
+    CreateFile(sysFile);
+    CreateFile(usrFile);
+    CreateFile(noneFile);
+    const std::string systemTag = "system";
+    const std::string userTag = "user";
+    EXPECT_NE(TEMP_FAILURE_RETRY(setxattr(sysFile.c_str(), "user.trace_source",
+        systemTag.c_str(), systemTag.size(), 0)), -1);
+    EXPECT_NE(TEMP_FAILURE_RETRY(setxattr(usrFile.c_str(), "user.trace_source",
+        userTag.c_str(), userTag.size(), 0)), -1);
+    std::vector<TraceFileInfo> vec;
+    vec.push_back(TraceFileInfo(sysFile, 0, 0, false));
+    vec.push_back(TraceFileInfo(usrFile, 0, 0, false));
+    vec.push_back(TraceFileInfo(noneFile, 0, 0, false));
+
+    EXPECT_EQ(FileAgeingUtils::AgeTraceFiles(vec, 0, HitTraceDir()), SUCCESS);
+
+    EXPECT_FALSE(FileExists(sysFile));
+    EXPECT_TRUE(FileExists(usrFile));
+    EXPECT_TRUE(FileExists(noneFile));
+    ASSERT_EQ(vec.size(), 2); // 2 : user-tagged and untagged files remain
+    EXPECT_EQ(vec[0].filename, usrFile);
+    EXPECT_EQ(vec[1].filename, noneFile);
+    EXPECT_EQ(remove(usrFile.c_str()), 0);
+    EXPECT_EQ(remove(noneFile.c_str()), 0);
+}
+
 } // namespace Hitrace
 } // namespace HiviewDFX
 } // namespace OHOS

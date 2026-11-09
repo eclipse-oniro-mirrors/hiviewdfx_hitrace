@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
 #include <dirent.h>
 #include <fcntl.h>
 #include <fstream>
@@ -28,6 +29,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <sys/stat.h>
 #include <sys/xattr.h>
 #include <unistd.h>
 #include <vector>
@@ -1870,5 +1872,86 @@ HWTEST_F(TraceSourceXattrTest, SourceTag001, TestSize.Level2)
         EXPECT_EQ(errno, ENODATA);
         EXPECT_EQ(remove(userPath.c_str()), 0);
     }
+}
+
+class AgeTraceFileTest : public testing::Test {
+public:
+    static void SetUpTestCase()
+    {
+        system("service_control stop hiview");
+    }
+
+    static void TearDownTestCase()
+    {
+        system("service_control start hiview");
+    }
+};
+
+/**
+ * @tc.name: AgeTraceFileTest001
+ * @tc.desc: AgeTraceFile removes expired files tagged as system source only.
+ * @tc.type: FUNC
+ */
+HWTEST_F(AgeTraceFileTest, AgeTraceFileTest001, TestSize.Level2)
+{
+    const std::string prefix = std::string(TRACE_FILE_DEFAULT_DIR) + "age_ut_" + std::to_string(getpid()) + "_";
+    const std::string sysFile = prefix + "sys";
+    const std::string usrFile = prefix + "usr";
+    const std::string noneFile = prefix + "none";
+    for (const std::string& file : {sysFile, usrFile, noneFile}) {
+        std::ofstream out(file);
+        ASSERT_TRUE(out.is_open()) << file;
+    }
+    const std::string systemTag = "system";
+    const std::string userTag = "user";
+    EXPECT_NE(TEMP_FAILURE_RETRY(setxattr(sysFile.c_str(), "user.trace_source",
+        systemTag.c_str(), systemTag.size(), 0)), -1);
+    EXPECT_NE(TEMP_FAILURE_RETRY(setxattr(usrFile.c_str(), "user.trace_source",
+        userTag.c_str(), userTag.size(), 0)), -1);
+
+    EXPECT_EQ(AgeTraceFile(0), static_cast<int>(TraceErrorCode::SUCCESS));
+
+    EXPECT_NE(access(sysFile.c_str(), F_OK), 0);
+    EXPECT_EQ(access(usrFile.c_str(), F_OK), 0);
+    EXPECT_EQ(access(noneFile.c_str(), F_OK), 0);
+    (void)remove(sysFile.c_str());
+    EXPECT_EQ(remove(usrFile.c_str()), 0);
+    EXPECT_EQ(remove(noneFile.c_str()), 0);
+}
+
+/**
+ * @tc.name: AgeTraceFileTest002
+ * @tc.desc: AgeTraceFile keeps files whose age is within the retention window.
+ * @tc.type: FUNC
+ */
+HWTEST_F(AgeTraceFileTest, AgeTraceFileTest002, TestSize.Level2)
+{
+    const std::string prefix = std::string(TRACE_FILE_DEFAULT_DIR) + "age_ut_" + std::to_string(getpid()) + "_";
+    const std::string expiredFile = prefix + "expired";
+    const std::string keptFile = prefix + "kept";
+    for (const std::string& file : {expiredFile, keptFile}) {
+        std::ofstream out(file);
+        ASSERT_TRUE(out.is_open()) << file;
+    }
+    const std::string systemTag = "system";
+    EXPECT_NE(TEMP_FAILURE_RETRY(setxattr(expiredFile.c_str(), "user.trace_source",
+        systemTag.c_str(), systemTag.size(), 0)), -1);
+    EXPECT_NE(TEMP_FAILURE_RETRY(setxattr(keptFile.c_str(), "user.trace_source",
+        systemTag.c_str(), systemTag.size(), 0)), -1);
+    struct timespec now {};
+    clock_gettime(CLOCK_REALTIME, &now);
+    const time_t expiredTime = now.tv_sec - 200; // 200 : 200s ago, outside the 100s retention window
+    const time_t keptTime = now.tv_sec - 50; // 50 : 50s ago, inside the 100s retention window
+    const struct timespec expiredTimes[2] = {{expiredTime, 0}, {expiredTime, 0}};
+    const struct timespec keptTimes[2] = {{keptTime, 0}, {keptTime, 0}};
+    EXPECT_EQ(utimensat(AT_FDCWD, expiredFile.c_str(), expiredTimes, 0), 0);
+    EXPECT_EQ(utimensat(AT_FDCWD, keptFile.c_str(), keptTimes, 0), 0);
+
+    EXPECT_EQ(AgeTraceFile(100), static_cast<int>(TraceErrorCode::SUCCESS)); // 100 : retention window in seconds
+
+    EXPECT_NE(access(expiredFile.c_str(), F_OK), 0);
+    EXPECT_EQ(access(keptFile.c_str(), F_OK), 0);
+    EXPECT_EQ(remove(keptFile.c_str()), 0);
+    (void)remove(expiredFile.c_str());
 }
 } // namespace
