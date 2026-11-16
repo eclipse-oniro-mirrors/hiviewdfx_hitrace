@@ -279,11 +279,13 @@ TraceContextManager &TraceContextManager::GetInstance()
 
 void TraceContextManager::ReleaseContext()
 {
+    std::lock_guard<std::mutex> lock(contextMutex_);
     traceFilterContext_ = nullptr;
 }
 
 std::shared_ptr<TraceFilterContext> TraceContextManager::GetTraceFilterContext(bool createIfNotExisted)
 {
+    std::lock_guard<std::mutex> lock(contextMutex_);
     if (traceFilterContext_ || !createIfNotExisted) {
         return traceFilterContext_;
     }

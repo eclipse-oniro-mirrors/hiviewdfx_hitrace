@@ -58,6 +58,7 @@ public:
     void ReleaseContext();
 private:
     std::shared_ptr<TraceFilterContext> traceFilterContext_ = nullptr;
+    std::mutex contextMutex_;
 };
 }
 }
