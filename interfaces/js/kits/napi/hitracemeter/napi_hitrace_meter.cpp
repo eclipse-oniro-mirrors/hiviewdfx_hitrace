@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include <atomic>
 #include <cstdio>
 #include <functional>
 #include <hilog/log.h>
@@ -58,6 +59,19 @@ constexpr int32_t INVALID_INDEX = -2;
 struct CallbackContext {
     napi_threadsafe_function tsFunc = nullptr;
     bool traceEnable;
+    std::atomic<int> refCount{1};
+
+    void Acquire()
+    {
+        refCount.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void Release()
+    {
+        if (refCount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            delete this;
+        }
+    }
 };
 
 bool TypeCheck(const napi_env& env, const napi_value& value, const napi_valuetype expectType)
@@ -369,10 +383,15 @@ static napi_value JSIsTraceEnabled(napi_env env, napi_callback_info info)
 static void JsExcuteCallBack(void* ctx, bool enable)
 {
     CallbackContext* context = reinterpret_cast<CallbackContext*>(ctx);
-    if (context != nullptr) {
-        context->traceEnable = enable;
-        napi_acquire_threadsafe_function(context->tsFunc);
-        napi_call_threadsafe_function(context->tsFunc, context, napi_tsfn_nonblocking);
+    if (context == nullptr) {
+        return;
+    }
+    context->Acquire();
+    context->traceEnable = enable;
+    napi_acquire_threadsafe_function(context->tsFunc);
+    if (napi_call_threadsafe_function(context->tsFunc, context, napi_tsfn_nonblocking) != napi_ok) {
+        napi_release_threadsafe_function(context->tsFunc, napi_tsfn_release);
+        context->Release();
     }
 }
 
@@ -381,7 +400,7 @@ static void JsDeleteCallback(void* ctx)
     CallbackContext* context = reinterpret_cast<CallbackContext*>(ctx);
     if (context != nullptr) {
         napi_release_threadsafe_function(context->tsFunc, napi_tsfn_release);
-        delete context;
+        context->Release();
     }
 }
 
@@ -401,6 +420,8 @@ static void JsThreadSafeCall(napi_env env, napi_value callback, void* context, v
     napi_get_boolean(env, callbackContext->traceEnable, &argv);
     napi_value result = nullptr;
     napi_call_function(env, nullptr, callback, 1, &argv, &result);
+    napi_release_threadsafe_function(callbackContext->tsFunc, napi_tsfn_release);
+    callbackContext->Release();
 }
 
 static napi_value JSRegisterTraceListener(napi_env env, napi_callback_info info)

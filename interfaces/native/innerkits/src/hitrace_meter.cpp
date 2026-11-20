@@ -791,6 +791,7 @@ void WriteAppTrace(const TraceMarker& traceMarker)
     int len = PREFIX_MAX_SIZE + strlen(traceMarker.name) + strlen(traceMarker.customArgs) +
               strlen(traceMarker.customCategory);
     if (g_appFlag == FLAG_MAIN_THREAD && g_tgid == tid) {
+        std::unique_lock<std::recursive_mutex> lock(g_appTraceMutex);
         if (!CheckFileSize(len)) {
             return;
         }

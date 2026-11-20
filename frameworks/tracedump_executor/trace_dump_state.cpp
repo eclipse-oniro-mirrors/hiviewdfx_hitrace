@@ -66,6 +66,7 @@ void TraceDumpState::EndLoopDumpSelf()
 
 void TraceDumpState::EndLoopDump()
 {
+    std::unique_lock<std::mutex> lock(conditionMutex_);
     auto before = state_.load(std::memory_order_acquire);
     if (before == DumpState::IDLE) {
         return;
@@ -73,7 +74,6 @@ void TraceDumpState::EndLoopDump()
     state_.store(DumpState::STOPPING, std::memory_order_release);
     HILOG_INFO(LOG_CORE, "success changed state_ from %{public}d to %{public}d",
         static_cast<int>(before), static_cast<int>(DumpState::STOPPING));
-    std::unique_lock<std::mutex> lock(conditionMutex_);
     stateCondition_.wait_for(lock, std::chrono::milliseconds(WAIT_TIMEOUT_MS),
         [this] { return state_.load(std::memory_order_acquire) == DumpState::IDLE; });
 }
